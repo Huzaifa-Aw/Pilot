@@ -1,0 +1,717 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+model MemberCertification {
+  id             String    @id @default(uuid())
+  organizationId String
+  memberId       String
+  name           String
+  issuer         String?
+  issuedOn       DateTime? @db.Date
+  expiresOn      DateTime? @db.Date
+  credentialId   String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  organization Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  member       OrganizationMember @relation(fields: [memberId, organizationId], references: [id, organizationId], onDelete: Cascade)
+
+  @@unique([memberId, name])
+  @@index([organizationId, expiresOn])
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+enum MemberRole {
+  OWNER
+  ADMIN
+  MANAGER
+  ENGINEER
+  VIEWER
+}
+
+enum ProjectStatus {
+  PLANNING
+  ACTIVE
+  ON_HOLD
+  COMPLETED
+  ARCHIVED
+}
+
+enum MilestoneStatus {
+  PLANNED
+  IN_PROGRESS
+  UNDER_REVIEW
+  APPROVED
+  COMPLETED
+}
+
+enum TaskStatus {
+  BACKLOG
+  IN_PROGRESS
+  UNDER_REVIEW
+  APPROVED
+  COMPLETED
+  CANCELLED
+}
+
+enum TaskPriority {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum TimesheetStatus {
+  DRAFT
+  SUBMITTED
+  APPROVED
+  FLAGGED
+}
+
+enum DeploymentStatus {
+  UPCOMING
+  ACTIVE
+  COMPLETED
+  CANCELLED
+}
+
+enum ProjectMemberRole {
+  LEAD
+  MEMBER
+}
+
+enum TimesheetPeriodStatus {
+  OPEN
+  SUBMITTED
+  APPROVED
+  REOPENED
+}
+
+enum AuditAction {
+  CREATE
+  UPDATE
+  DELETE
+  LOGIN
+  INVITE
+  ROLE_CHANGE
+  EXPORT
+}
+
+model Organization {
+  id        String   @id @default(uuid())
+  name      String
+  slug      String   @unique
+  logoUrl   String?
+  website   String?
+  industry  String?
+  timezone  String   @default("UTC")
+  locale    String   @default("en")
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  members           OrganizationMember[]
+  invitations       Invitation[]
+  metadataTemplates MetadataTemplate[]
+  projects          Project[]
+  allocations       ResourceAllocation[]
+  allocationLocks  AllocationWeekLock[]
+  timesheetEntries  TimesheetEntry[]
+  deployments       Deployment[]
+  assets            Asset[]
+  auditLogs         AuditLog[]
+  integrations      Integration[]
+  bootstrapState    BootstrapState?
+  worklogs          Worklog[]
+  timesheetPeriods  TimesheetPeriod[]
+  notifications     Notification[]
+  projectMembers    ProjectMember[]
+  memberSkills      MemberSkill[]
+  certifications    MemberCertification[]
+  deploymentMembers DeploymentMember[]
+  assetCheckouts    AssetCheckout[]
+}
+
+model User {
+  id            String    @id @default(uuid())
+  email         String    @unique
+  emailVerified DateTime?
+  passwordHash  String?
+  name          String?
+  image         String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  memberships         OrganizationMember[]
+  accounts            Account[]
+  sessions            Session[]
+  sentInvitations     Invitation[]       @relation("InvitationCreator")
+  auditLogs           AuditLog[]
+}
+
+model Account {
+  id                String  @id @default(uuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@index([userId])
+}
+
+model Session {
+  id           String   @id @default(uuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+model BootstrapState {
+  id             String   @id @default("global")
+  organizationId String   @unique
+  createdAt      DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+}
+
+model OrganizationMember {
+  id                 String     @id @default(uuid())
+  organizationId     String
+  userId             String
+  role               MemberRole @default(ENGINEER)
+  title              String?
+  discipline         String?
+  department         String?
+  phone              String?
+  location           String?
+  skills             Json?
+  bio                String?    @db.Text
+  employmentType     String?
+  startDate          DateTime?  @db.Date
+  timezone           String     @default("UTC")
+  workingDays        Int[]      @default([1, 2, 3, 4, 5])
+  dailyCapacityHrs   Float      @default(8)
+  languages          String[]   @default([])
+  preferredWorkMode String?
+  reportsToMemberId  String?
+  emergencyContactName  String?
+  emergencyContactPhone String?
+  capacityHrsPerWeek Float      @default(40)
+  metadata           Json?
+  isActive           Boolean    @default(true)
+  invitedAt          DateTime?
+  joinedAt           DateTime?
+  createdAt          DateTime   @default(now())
+  updatedAt          DateTime   @updatedAt
+
+  organization         Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user                 User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  reportsTo            OrganizationMember? @relation("MemberReportingLine", fields: [reportsToMemberId, organizationId], references: [id, organizationId], onDelete: Restrict)
+  directReports        OrganizationMember[] @relation("MemberReportingLine")
+  allocations          ResourceAllocation[]
+  allocationLocks     AllocationWeekLock[]
+  timesheetEntries     TimesheetEntry[]    @relation("TimesheetMember")
+  deployments          Deployment[]
+  taskAssignments      TaskAssignment[]
+  signedOffMilestones  Milestone[]         @relation("MilestoneSigner")
+  approvedTimesheets   TimesheetEntry[]    @relation("TimesheetApprover")
+  projectMemberships   ProjectMember[]
+  skillsProfile        MemberSkill[]
+  certifications       MemberCertification[]
+  worklogs             Worklog[]
+  timesheetPeriods     TimesheetPeriod[]
+  approvedPeriods      TimesheetPeriod[]   @relation("TimesheetPeriodApprover")
+  notifications        Notification[]
+  deploymentMemberships DeploymentMember[]
+  assetCheckouts       AssetCheckout[]     @relation("AssetCheckoutMember")
+  approvedCheckouts    AssetCheckout[]     @relation("AssetCheckoutApprover")
+
+  @@unique([organizationId, userId])
+  @@unique([id, organizationId])
+  @@index([organizationId, role])
+  @@index([organizationId, reportsToMemberId])
+  @@index([userId])
+}
+
+model Invitation {
+  id             String     @id @default(uuid())
+  organizationId String
+  email          String
+  role           MemberRole @default(ENGINEER)
+  tokenHash      String     @unique
+  pendingKey     String?    @unique
+  expiresAt      DateTime
+  acceptedAt     DateTime?
+  invitedById    String
+  createdAt      DateTime   @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  invitedBy    User         @relation("InvitationCreator", fields: [invitedById], references: [id], onDelete: Restrict)
+
+  @@index([organizationId, email])
+  @@index([expiresAt])
+}
+
+model AllocationWeekLock {
+  organizationId String
+  memberId       String
+  weekStartDate  DateTime @db.Date
+  version        Int      @default(0)
+
+  organization Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  member       OrganizationMember @relation(fields: [memberId, organizationId], references: [id, organizationId], onDelete: Cascade)
+
+  @@id([organizationId, memberId, weekStartDate])
+}
+
+model MetadataTemplate {
+  id             String   @id @default(uuid())
+  organizationId String
+  entityType     String
+  name           String
+  fields         Json
+  isDefault      Boolean  @default(false)
+  defaultKey     String?  @unique
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([id, organizationId])
+  @@index([organizationId, entityType])
+}
+
+model Project {
+  id             String        @id @default(uuid())
+  organizationId String
+  code           String
+  title          String
+  description    String?       @db.Text
+  status         ProjectStatus @default(PLANNING)
+  startDate      DateTime?
+  endDate        DateTime?
+  budgetHours    Float?
+  actualHours    Float         @default(0)
+  taskCounter    Int           @default(0)
+  metadata       Json?
+  tags           String[]      @default([])
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  organization    Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  milestones     Milestone[]
+  tasks          Task[]
+  allocations    ResourceAllocation[]
+  timesheetEntries TimesheetEntry[]
+  deployments    Deployment[]
+  assets         ProjectAsset[]
+  members        ProjectMember[]
+  worklogs       Worklog[]
+  assetCheckouts AssetCheckout[]
+
+  @@unique([organizationId, code])
+  @@unique([id, organizationId])
+  @@index([organizationId, status])
+  @@index([organizationId, updatedAt])
+}
+
+model Milestone {
+  id                String          @id @default(uuid())
+  organizationId    String
+  projectId         String
+  sequenceNumber    Int
+  title             String
+  description       String?         @db.Text
+  status            MilestoneStatus @default(PLANNED)
+  targetDate        DateTime?
+  startDate         DateTime?       @db.Date
+  completionPct     Float           @default(0)
+  requiresSignoff   Boolean         @default(false)
+  signoffByMemberId String?
+  signoffAt         DateTime?
+  metadata          Json?
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+
+  project      Project             @relation(fields: [projectId, organizationId], references: [id, organizationId], onDelete: Cascade)
+  signer       OrganizationMember? @relation("MilestoneSigner", fields: [signoffByMemberId, organizationId], references: [id, organizationId], onDelete: Restrict)
+  tasks        Task[]
+  allocations  ResourceAllocation[]
+  timesheetEntries TimesheetEntry[]
+
+  @@unique([id, organizationId])
+  @@unique([projectId, sequenceNumber])
+  @@index([organizationId, projectId])
+  @@index([organizationId, status])
+}
+
+model Task {
+  id             String       @id @default(uuid())
+  organizationId String
+  projectId      String
+  milestoneId    String?
+  requiredDiscipline String?
+  title          String
+  description    String?      @db.Text
+  status         TaskStatus   @default(BACKLOG)
+  priority       TaskPriority @default(MEDIUM)
+  estimatedHrs   Float?
+  actualHrs      Float        @default(0)
+  completedAt    DateTime?
+  dueDate        DateTime?
+  startDate      DateTime?    @db.Date
+  taskNumber     Int?
+  sortOrder      Float        @default(0)
+  reporterMemberId String?
+  parentTaskId   String?
+  blockedByTaskId String?
+  metadata       Json?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  project     Project         @relation(fields: [projectId, organizationId], references: [id, organizationId], onDelete: Cascade)
+  milestone   Milestone?      @relation(fields: [milestoneId, organizationId], references: [id, organizationId], onDelete: Restrict)
+  assignments TaskAssignment[]
+  worklogs    Worklog[]
+  parent      Task?           @relation("TaskHierarchy", fields: [parentTaskId, organizationId], references: [id, organizationId], onDelete: Restrict)
+  children    Task[]          @relation("TaskHierarchy")
+  blocker     Task?           @relation("TaskDependency", fields: [blockedByTaskId, organizationId], references: [id, organizationId], onDelete: Restrict)
+  blockedTasks Task[]          @relation("TaskDependency")
+
+  @@unique([id, organizationId])
+  @@unique([projectId, taskNumber])
+  @@index([organizationId, projectId, status])
+  @@index([organizationId, milestoneId])
+}
+
+model TaskAssignment {
+  id             String   @id @default(uuid())
+  organizationId String
+  taskId         String
+  memberId       String
+  assignedAt     DateTime @default(now())
+
+  task   Task               @relation(fields: [taskId, organizationId], references: [id, organizationId], onDelete: Cascade)
+  member OrganizationMember @relation(fields: [memberId, organizationId], references: [id, organizationId], onDelete: Cascade)
+
+  @@unique([taskId, memberId])
+  @@index([organizationId, memberId])
+}
+
+model ResourceAllocation {
+  id             String   @id @default(uuid())
+  organizationId String
+  memberId       String
+  projectId      String
+  milestoneId    String?
+  weekStartDate  DateTime @db.Date
+  plannedHrs     Float
+  allocationPct  Float
+  mode           String   @default("Remote")
+  notes          String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  member       OrganizationMember  @relation(fields: [memberId, organizationId], references: [id, organizationId], onDelete: Cascade)
+  project      Project              @relation(fields: [projectId, organizationId], references: [id, organizationId], onDelete: Cascade)
+  milestone    Milestone?           @relation(fields: [milestoneId, organizationId], references: [id, organizationId], onDelete: Restrict)
+
+  @@index([organizationId, memberId, weekStartDate])
+  @@index([organizationId, projectId, weekStartDate])
+  @@unique([organizationId, memberId, projectId, weekStartDate])
+}
+
+model ProjectMember {
+  organizationId String
+  projectId      String
+  memberId       String
+  role           ProjectMemberRole @default(MEMBER)
+  createdAt      DateTime          @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  project      Project             @relation(fields: [projectId, organizationId], references: [id, organizationId], onDelete: Cascade)
+  member       OrganizationMember  @relation(fields: [memberId, organizationId], references: [id, organizationId], onDelete: Cascade)
+
+  @@id([projectId, memberId])
+  @@index([organizationId, memberId])
+}
+
+model MemberSkill {
+  id             String   @id @default(uuid())
+  organizationId String
+  memberId       String
+  name           String
+  level          Int
+  yearsExperience Float?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  member OrganizationMember @relation(fields: [memberId, organizationId], references: [id, organizationId], onDelete: Cascade)
+
+  @@unique([memberId, name])
+  @@index([organizationId, name, level])
+}
+
+model TimesheetEntry {
+  id                 String          @id @default(uuid())
+  organizationId     String
+  memberId           String
+  projectId          String
+  milestoneId        String?
+  weekStartDate      DateTime        @db.Date
+  monday             Float           @default(0)
+  tuesday            Float           @default(0)
+  wednesday          Float           @default(0)
+  thursday           Float           @default(0)
+  friday             Float           @default(0)
+  totalHrs           Float           @default(0)
+  status             TimesheetStatus @default(DRAFT)
+  notes              String?
+  approvedByMemberId String?
+  approvedAt         DateTime?
+  createdAt          DateTime        @default(now())
+  updatedAt          DateTime        @updatedAt
+
+  organization Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  member       OrganizationMember  @relation("TimesheetMember", fields: [memberId, organizationId], references: [id, organizationId], onDelete: Cascade)
+  project      Project              @relation(fields: [projectId, organizationId], references: [id, organizationId], onDelete: Cascade)
+  milestone    Milestone?           @relation(fields: [milestoneId, organizationId], references: [id, organizationId], onDelete: Restrict)
+  approvedBy   OrganizationMember?  @relation("TimesheetApprover", fields: [approvedByMemberId, organizationId], references: [id, organizationId], onDelete: Restrict)
+
+  @@unique([organizationId, memberId, projectId, weekStartDate])
+  @@index([organizationId, weekStartDate, status])
+}
+
+model Worklog {
+  id             String   @id @default(uuid())
+  organizationId String
+  memberId       String
+  projectId      String?
+  taskId         String?
+  date           DateTime @db.Date
+  hours          Float
+  description    String?  @db.Text
+  category       String?
+  billable       Boolean  @default(false)
+  legacyEntryId  String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  member       OrganizationMember @relation(fields: [memberId, organizationId], references: [id, organizationId], onDelete: Cascade)
+  project      Project?            @relation(fields: [projectId, organizationId], references: [id, organizationId], onDelete: Cascade)
+  task         Task?               @relation(fields: [taskId, organizationId], references: [id, organizationId], onDelete: Restrict)
+
+  @@unique([legacyEntryId, date])
+  @@index([organizationId, memberId, date])
+  @@index([organizationId, projectId, date])
+  @@index([organizationId, taskId, date])
+}
+
+model TimesheetPeriod {
+  id                 String               @id @default(uuid())
+  organizationId     String
+  memberId           String
+  monthStart         DateTime             @db.Date
+  status             TimesheetPeriodStatus @default(OPEN)
+  submittedAt        DateTime?
+  approvedByMemberId String?
+  approvedAt         DateTime?
+  reviewNotes        String?              @db.Text
+  createdAt          DateTime             @default(now())
+  updatedAt          DateTime             @updatedAt
+
+  organization Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  member       OrganizationMember  @relation(fields: [memberId, organizationId], references: [id, organizationId], onDelete: Cascade)
+  approvedBy   OrganizationMember? @relation("TimesheetPeriodApprover", fields: [approvedByMemberId, organizationId], references: [id, organizationId], onDelete: Restrict)
+
+  @@unique([organizationId, memberId, monthStart])
+  @@index([organizationId, monthStart, status])
+}
+
+model Notification {
+  id             String   @id @default(uuid())
+  organizationId String
+  memberId       String
+  type           String
+  dedupeKey      String?
+  payload        Json
+  readAt         DateTime?
+  createdAt      DateTime @default(now())
+
+  organization Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  member       OrganizationMember @relation(fields: [memberId, organizationId], references: [id, organizationId], onDelete: Cascade)
+
+  @@index([organizationId, memberId, readAt, createdAt])
+  @@unique([organizationId, memberId, type, dedupeKey])
+}
+
+model Deployment {
+  id             String           @id @default(uuid())
+  organizationId String
+  memberId       String
+  projectId      String
+  location       String
+  title          String?
+  deploymentType String?
+  country        String?
+  startDate      DateTime         @db.Date
+  endDate        DateTime         @db.Date
+  status         DeploymentStatus @default(UPCOMING)
+  checklist      Json?
+  conflictFlags  Json?
+  notes          String?
+  metadata       Json?
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  organization Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  member       OrganizationMember @relation(fields: [memberId, organizationId], references: [id, organizationId], onDelete: Cascade)
+  project      Project            @relation(fields: [projectId, organizationId], references: [id, organizationId], onDelete: Cascade)
+  members      DeploymentMember[]
+  assetCheckouts AssetCheckout[]
+
+  @@unique([id, organizationId])
+  @@index([organizationId, memberId, startDate, endDate])
+  @@index([organizationId, projectId, status])
+}
+
+model DeploymentMember {
+  organizationId String
+  deploymentId  String
+  memberId      String
+  createdAt     DateTime @default(now())
+
+  organization Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  deployment Deployment        @relation(fields: [deploymentId, organizationId], references: [id, organizationId], onDelete: Cascade)
+  member     OrganizationMember @relation(fields: [memberId, organizationId], references: [id, organizationId], onDelete: Cascade)
+
+  @@id([deploymentId, memberId])
+  @@index([organizationId, memberId])
+}
+
+model Asset {
+  id             String   @id @default(uuid())
+  organizationId String
+  assetCode      String
+  title          String
+  description    String?  @db.Text
+  category       String?
+  status         String   @default("ACTIVE")
+  location       String?
+  serialNumber   String?
+  acquiredOn     DateTime? @db.Date
+  nextServiceDate DateTime? @db.Date
+  metadata       Json?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  projects     ProjectAsset[]
+  checkouts    AssetCheckout[]
+
+  @@unique([organizationId, assetCode])
+  @@unique([id, organizationId])
+  @@index([organizationId, category])
+}
+
+model AssetCheckout {
+  id             String   @id @default(uuid())
+  organizationId String
+  assetId        String
+  memberId       String
+  projectId      String?
+  deploymentId   String?
+  checkedOutAt   DateTime @default(now())
+  returnedAt     DateTime?
+  returnedByMemberId String?
+  notes          String?
+
+  organization Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  asset      Asset               @relation(fields: [assetId, organizationId], references: [id, organizationId], onDelete: Cascade)
+  member     OrganizationMember  @relation("AssetCheckoutMember", fields: [memberId, organizationId], references: [id, organizationId], onDelete: Restrict)
+  approver   OrganizationMember? @relation("AssetCheckoutApprover", fields: [returnedByMemberId, organizationId], references: [id, organizationId], onDelete: Restrict)
+  project    Project?            @relation(fields: [projectId, organizationId], references: [id, organizationId], onDelete: Restrict)
+  deployment Deployment?         @relation(fields: [deploymentId, organizationId], references: [id, organizationId], onDelete: Restrict)
+
+  @@index([organizationId, assetId, returnedAt])
+  @@index([organizationId, memberId, returnedAt])
+  @@index([organizationId, deploymentId])
+}
+model ProjectAsset {
+  organizationId String
+  projectId      String
+  assetId        String
+  linkedAt       DateTime @default(now())
+
+  project Project @relation(fields: [projectId, organizationId], references: [id, organizationId], onDelete: Cascade)
+  asset   Asset   @relation(fields: [assetId, organizationId], references: [id, organizationId], onDelete: Cascade)
+
+  @@id([projectId, assetId])
+  @@index([organizationId, assetId])
+}
+
+model Integration {
+  id             String   @id @default(uuid())
+  organizationId String
+  type           String
+  name           String
+  config         Json
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, type])
+}
+
+model AuditLog {
+  id             String      @id @default(uuid())
+  organizationId String
+  actorId        String?
+  actorEmail     String?
+  action         AuditAction
+  entityType     String
+  entityId       String?
+  before         Json?
+  after          Json?
+  ipAddress      String?
+  userAgent      String?
+  createdAt      DateTime    @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  actor        User?        @relation(fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, createdAt])
+  @@index([organizationId, entityType, entityId])
+  @@index([actorId])
+}

@@ -2,6 +2,9 @@
 
 > React component hierarchy, layout shells, RBAC guards, and dynamic metadata cards.
 > All components are domain-agnostic and driven by configuration.
+>
+> Implementation note: code examples are architectural patterns, not a guarantee that each
+> illustrative component is a standalone file. Current screens use the shared components listed below.
 
 ---
 
@@ -11,35 +14,33 @@
 
 ```
 (dashboard)/layout.tsx
-  ├── <SessionProvider>           ← Auth.js session hydration
-  ├── <OrgProvider>               ← Active org context (name, slug, logo, templates)
-  ├── <ThemeProvider>             ← Dark/Light with system-preference detection
-  └── <div class="flex h-screen">
-        ├── <Sidebar />           ← Left navigation (collapsible)
-        └── <main>
-              ├── <Topbar />      ← Right-side: org switcher, avatar, notifications
-              └── {children}      ← Page content slot
+  ├── auth() + resolveTenantContext()
+  └── <DashboardFrame>            ← active workspace, role and user
+        ├── <Sidebar />           ← responsive role-filtered navigation
+        ├── <Topbar />            ← page title and workspace controls
+        └── <main>{children}</main>
 ```
 
 ### `Sidebar.tsx`
 
 ```typescript
-// src/components/layout/Sidebar.tsx
-// RBAC-aware: nav items are shown/hidden based on session role
+// src/components/layout/navigation.ts
+// Role filtering controls navigation visibility; API permissions remain authoritative.
 
 const NAV_ITEMS: NavItem[] = [
-  { href: "/overview",     label: "Overview",     icon: LayoutDashboard, minRole: "VIEWER"   },
-  { href: "/projects",     label: "Projects",     icon: FolderKanban,    minRole: "VIEWER"   },
-  { href: "/members",      label: "Members",      icon: Users,           minRole: "VIEWER"   },
-  { href: "/timesheets",   label: "Timesheets",   icon: Clock,           minRole: "ENGINEER" },
-  { href: "/deployments",  label: "Deployments",  icon: MapPin,          minRole: "ENGINEER" },
-  { href: "/assets",       label: "Assets",       icon: Package,         minRole: "VIEWER"   },
-  { href: "/audit-log",    label: "Audit Log",    icon: ScrollText,      minRole: "ADMIN"    },
-  { href: "/settings",     label: "Settings",     icon: Settings,        minRole: "ADMIN"    },
+  { href: "/overview",    label: "Overview",    minRole: "VIEWER" },
+  { href: "/projects",    label: "Projects",    minRole: "VIEWER" },
+  { href: "/board",       label: "Board",       minRole: "VIEWER" },
+  { href: "/members",     label: "People",      minRole: "VIEWER" },
+  { href: "/timesheets",  label: "Timesheets",  minRole: "ENGINEER" },
+  { href: "/deployments", label: "Deployments", minRole: "ENGINEER" },
+  { href: "/assets",      label: "Assets",      minRole: "VIEWER" },
+  { href: "/reports",     label: "Reports",     minRole: "MANAGER" },
+  { href: "/settings",    label: "Settings",    minRole: "ADMIN" },
 ];
 
 // Filter by role before rendering
-const visibleItems = NAV_ITEMS.filter(item =>
+const visibleItems = navigationItems.filter(item =>
   roleAtLeast(session.user.role, item.minRole)
 );
 ```
@@ -47,6 +48,10 @@ const visibleItems = NAV_ITEMS.filter(item =>
 ---
 
 ## 2. Data Display Components
+
+Implemented shared components include `TaskBoard` (cross-project status board),
+`CapacityHeatmap`, `OnDeploymentBadge`, and `ReportCharts`. The board is visible to all active
+workspace roles; mutation controls and API routes enforce project and role capabilities.
 
 ### `DataTable.tsx` — Universal Paginated Table
 
@@ -240,11 +245,11 @@ Admin-only drag-and-drop field configurator. Uses `@dnd-kit/core` for reordering
 
 ```
 ┌────────────────────────────────────────────────┐
-│  Metadata Template: Structural Project Fields   │
+│  Metadata Template: Project Fields              │
 ├────────────────────────────────────────────────┤
-│  ⠿  Stress Load Vectors    [number]  [unit: kN/m²]  [required ✓]  [🗑]  │
-│  ⠿  Material Grade         [select]  [A36, A572, ...]              [🗑]  │
-│  ⠿  Design Code            [select]  [AISC, ACI, EN]               [🗑]  │
+│  ⠿  Priority band          [select]  [Standard, High]              [🗑]  │
+│  ⠿  Review cadence         [text]                                  [🗑]  │
+│  ⠿  External reference     [text]                                  [🗑]  │
 │                                                                          │
 │  [ + Add Field ]                    [ Save Template ]                    │
 └──────────────────────────────────────────────────────────────────────────┘
@@ -252,66 +257,21 @@ Admin-only drag-and-drop field configurator. Uses `@dnd-kit/core` for reordering
 
 ---
 
-## 4. RBAC Guards
+## 4. Access checks
 
-### `RBACGuard.tsx` (Client Component)
+`src/lib/permissions.ts` is the shared capability layer. Server routes and pages use it for
+authoritative access checks; client-side visibility is only a user-experience aid.
 
-Wraps UI elements that should only render for certain roles.
-**Important**: This is a UX convenience only — the server enforces authorization.
-
-```typescript
-// src/components/guards/RBACGuard.tsx
-
-interface RBACGuardProps {
-  minRole: MemberRole;
-  fallback?: React.ReactNode;    // What to show if unauthorized (default: null)
-  children: React.ReactNode;
-}
-
-export function RBACGuard({ minRole, fallback = null, children }: RBACGuardProps) {
-  const { data: session } = useSession();
-  const userRole = session?.user?.role as MemberRole;
-
-  if (!roleAtLeast(userRole, minRole)) return <>{fallback}</>;
-  return <>{children}</>;
-}
-
-// Usage
-<RBACGuard minRole="MANAGER">
-  <Button onClick={openCreateProjectDialog}>New Project</Button>
-</RBACGuard>
-
-<RBACGuard minRole="ADMIN" fallback={<p className="text-muted">Audit log restricted.</p>}>
-  <AuditLogTable entries={auditEntries} />
-</RBACGuard>
-```
+Pages pass capability decisions into client controls so read-only actions stay visible and
+mutations remain disabled or absent as appropriate. There is no separate `RBACGuard` component.
 
 ---
 
-## 5. OrgProvider Context
+## 5. Workspace Context
 
-Provides organization-level configuration to all child components without prop drilling.
-
-```typescript
-// src/providers/OrgProvider.tsx
-
-interface OrgContextValue {
-  orgId: string;
-  orgName: string;
-  orgSlug: string;
-  logoUrl: string | null;
-  timezone: string;
-  locale: string;
-  metadataTemplates: MetadataTemplate[];   // All templates for this org
-  getTemplate: (entityType: string) => MetadataTemplate | undefined;
-}
-
-// Usage in any component:
-const { orgName, getTemplate } = useOrg();
-const projectTemplate = getTemplate("project");
-
-<MetadataCard template={projectTemplate?.fields ?? []} values={project.metadata} mode="view" />
-```
+The dashboard layout resolves the active organization and role on the server, then passes
+workspace details into `DashboardFrame`, `Sidebar`, `Topbar`, and `WorkspaceControls`. Feature
+components receive only the data and permission flags they need; there is no global `OrgProvider`.
 
 ---
 
@@ -331,14 +291,14 @@ export default async function ProjectsPage({ searchParams }) {
       title="Projects"
       description="Manage all engineering projects across your organization."
       actions={
-        <RBACGuard minRole="MANAGER">
+        canCreateProject && (
           <Button asChild>
             <Link href="/projects/new">
               <Plus className="h-4 w-4 mr-2" />
               New Project
             </Link>
           </Button>
-        </RBACGuard>
+        )}
       }
     >
       <DataTable

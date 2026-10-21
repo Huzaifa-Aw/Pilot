@@ -1,0 +1,7 @@
+.git
+.next
+.env
+.env.*
+coverage
+node_modules
+npm-debug.log*

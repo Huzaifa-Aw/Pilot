@@ -542,6 +542,32 @@ npx prisma db seed
 | `OrganizationMember` role (not on User) | One user can belong to multiple orgs with different roles |
 | `checklist Json?` on Deployment | Flexible punch-list without a dedicated table for v1 |
 
+## Workflow revision — additive schema
+
+The shipped schema keeps the weekly `TimesheetEntry` table for historical compatibility;
+the monthly worklog workflow is additive. These current-schema extensions supersede the
+earlier baseline snippets where they differ:
+
+- `OrganizationMember`: bio, employment type, start date, timezone, working days, daily
+  capacity, languages, preferred work mode, reporting-line self relation, and admin-only
+  emergency contact fields.
+- `MemberSkill`: normalized skill name, level, and years of experience. Legacy string-list
+  skills are backfilled at a neutral level.
+- `MemberCertification`: issuer, issue/expiry dates, and credential identifier.
+- `ProjectMember`: tenant-scoped project assignment with `LEAD` or `MEMBER` role. Existing
+  assignments, allocations, deployments, and weekly timesheets seed memberships.
+- `Project.taskCounter`; `Task.taskNumber`, `sortOrder`, dates, parent/blocker references,
+  reporter, and completion timestamp; `Milestone.startDate`.
+- `Worklog`: per-day entries linked to member, project, optional task, category, and hours.
+  `TimesheetPeriod` holds monthly submission/approval state. Existing weekly entries are
+  copied to daily worklogs and monthly periods without deleting the source rows.
+- `Notification`: tenant-scoped in-app reminders.
+- `DeploymentMember`: multi-member assignments, backfilled from the legacy single `memberId`.
+- `Deployment`: generic title/type/metadata fields.
+- `Asset`: location, serial number, acquisition and service dates.
+- `AssetCheckout`: same-tenant member, project, optional deployment, checkout, and return
+  history. Assets with checkout history are retired rather than deleted.
+
 ---
 
 ## Field Mapping: Old → New

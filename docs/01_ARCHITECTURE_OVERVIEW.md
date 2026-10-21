@@ -9,7 +9,7 @@
 ```
 ┌─────────────────────────────────────────────────────────────────┐
 │                        CLIENT LAYER                             │
-│  Next.js 15 (App Router) · React 19 · Tailwind · shadcn/ui     │
+│  Next.js 16 (App Router) · React 19 · Tailwind · shadcn/ui     │
 │  Dynamic metadata cards · RBAC-gated views · Dark/Light theme   │
 └────────────────────────┬────────────────────────────────────────┘
                          │ HTTPS / Server Actions / REST

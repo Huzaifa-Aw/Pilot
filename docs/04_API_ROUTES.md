@@ -414,6 +414,48 @@ Update fields array. Does not retroactively validate existing `metadata` JSON on
 
 ---
 
+## Revised access scope and workflow endpoints
+
+Access is enforced through `src/lib/permissions.ts`; `src/lib/rbac.ts` retains the same
+role hierarchy for presentation checks. Every endpoint still derives `organizationId` from
+the authenticated tenant context.
+
+| Capability | Who can do it |
+|---|---|
+| `board.read` | Every active organization member sees all tasks across all projects; filters are not security boundaries |
+| `project.read` | Project members/leads; Admin and Owner organization-wide |
+| `project.update`, milestone create/update | Project leads; Admin and Owner organization-wide |
+| `task.create` | Engineer+ in a project they belong to |
+| `task.update` | Manager+ in a project they belong to |
+| `task.move` | Manager+ in scoped projects; Engineers only on tasks assigned to them |
+| `timesheet.log` | Engineer+ for self |
+| `timesheet.team`, `timesheet.approve` | Manager in direct/indirect reporting tree; Admin/Owner organization-wide; self-approval is denied |
+| `allocation.update` | Manager within project and team scope; Admin/Owner organization-wide |
+| `profile.update` | Any role may update own profile; Managers may manage reports |
+| `role.manage`, `settings.manage`, `audit.read` | Admin and Owner; ownership transfer/deactivation remains Owner-only |
+
+Additional workflow routes:
+
+| Method and route | Purpose |
+|---|---|
+| `GET /api/projects/[projectId]/members` | Read project member/lead assignments with project scope |
+| `PUT /api/projects/[projectId]/members` | Replace active project members/leads; requires at least one lead and audits changes |
+| `GET /api/board/tasks` | Query the shared organization task set with project, assignee, status, priority, milestone, due-date, and text filters |
+| `GET /api/worklogs` / `POST /api/worklogs` | Read a monthly daily-worklog range; create self entries, or Admin log-on-behalf |
+| `PATCH /api/worklogs/[worklogId]` / `DELETE /api/worklogs/[worklogId]` | Edit/delete own unlocked entries; Admin may edit another person's |
+| `PATCH /api/timesheet-periods/[periodId]` | Submit, approve, or reopen a month; totals remain server-computed |
+| `POST /api/timesheet-reminders` | Create a team-scoped in-app timesheet reminder |
+| `PATCH /api/notifications/[notificationId]` | Mark the current member's notification read |
+| `POST /api/assets/[assetId]/checkout` | Check out or return an asset with tenant/member/project/deployment checks |
+| `POST /api/assets/import` | Import up to 500 CSV assets in an audited transaction |
+| `POST /api/deployments` / `PATCH /api/deployments/[deploymentId]` | Create/edit multi-member deployments and recompute per-member conflicts |
+
+The weekly `TimesheetEntry` routes remain for historical compatibility; new time capture
+uses `Worklog` and `TimesheetPeriod`. The audit-log UI and filters are unchanged in this
+revision.
+
+---
+
 ## Error Code Reference
 
 | HTTP | Code | Meaning |

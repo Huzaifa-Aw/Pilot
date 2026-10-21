@@ -145,22 +145,31 @@ await createAuditEvent({
 ## 5. RBAC Enforcement Rules
 
 Agents must apply these role checks consistently. Server-side is authoritative;
-client-side `<RBACGuard>` is UX-only.
+client-side guards are UX-only. Use `can()` from `src/lib/permissions.ts` for named
+capabilities and resource scope; route handlers must enforce the same checks.
 
-| Operation | Minimum Role |
-|-----------|-------------|
-| Read any org resource | `VIEWER` |
-| Create / edit Projects, Milestones, Allocations | `MANAGER` |
-| Approve Milestones, Timesheets | `MANAGER` |
-| Invite members, change roles | `ADMIN` |
-| Access Audit Log | `ADMIN` |
-| Configure MetadataTemplates | `ADMIN` |
-| Delete org, transfer ownership | `OWNER` |
+| Capability | Scope |
+|-----------|-------|
+| View shared task board | Every active organization member sees every project task; mutation permissions still apply |
+| View project details and allocations | Project members and leads; Admin and Owner organization-wide |
+| Create projects | Manager, Admin, Owner |
+| Edit projects and milestones | Project lead; Admin and Owner |
+| Create tasks | Engineer+ in a project they belong to |
+| Edit task details | Manager+ in a project they belong to |
+| Move assigned task / log own time | Engineer+; task moves require the actor to be assigned |
+| View team timesheets / approve | Manager in their direct/indirect reporting tree; Admin and Owner organization-wide |
+| Edit allocation | Manager in the project and member's reporting scope; Admin and Owner organization-wide |
+| Edit own profile | Any role; Managers may manage profiles in their reporting tree |
+| Invite members, change roles, manage metadata, access audit log | Admin and Owner |
+| Create/edit deployments | Manager in project scope; Admin and Owner organization-wide |
+| Read organization assets | Viewer+; checkout and asset administration require Manager+ |
+| Transfer ownership, deactivate organization, permanently delete project | Owner |
 
 Role hierarchy (lowest → highest): `VIEWER` < `ENGINEER` < `MANAGER` < `ADMIN` < `OWNER`
 
-Use `roleAtLeast(userRole, minimumRole)` from `src/lib/rbac.ts` — never write manual
-role string comparisons inline.
+Use `can(ctx, capability, resource)` from `src/lib/permissions.ts`. Use
+`roleAtLeast(userRole, minimumRole)` from `src/lib/rbac.ts` only for presentation checks
+or where a capability is not relevant; never write manual role string comparisons inline.
 
 ---
 
@@ -199,7 +208,7 @@ Every new file must follow the directory structure in [`02_DIRECTORY_TREE.md`](.
 
 | Layer | Mandated technology | Forbidden |
 |-------|--------------------|----|
-| Framework | Next.js 15 (App Router) | Pages Router patterns |
+| Framework | Next.js 16 (App Router) | Pages Router patterns |
 | Styling | Tailwind CSS + shadcn/ui | Inline styles, CSS modules (except globals) |
 | Database | PostgreSQL + Prisma ORM | Raw SQL without Prisma, any NoSQL |
 | Auth | Auth.js v5 (NextAuth) | Custom JWT implementation, Clerk, Auth0 |
@@ -247,7 +256,7 @@ Every new file must follow the directory structure in [`02_DIRECTORY_TREE.md`](.
 
 ---
 
-## 10. Next.js 15 App Router Rules
+## 10. Next.js 16 App Router Rules
 
 <!-- BEGIN:nextjs-agent-rules -->
 
@@ -255,14 +264,15 @@ Every new file must follow the directory structure in [`02_DIRECTORY_TREE.md`](.
 
 This version has breaking changes — APIs, conventions, and file structure may all differ
 from your training data. Read the relevant guide in `node_modules/next/dist/docs/`
-(resolved from this file's directory) before writing any code. Heed deprecation notices.
+(resolved from this file's directory) before writing any code. If package docs are absent,
+use the official version-specific Next.js documentation. Heed deprecation notices.
 
 **Critical App Router rules for this codebase:**
 
 1. **Server Components by default** — only add `"use client"` when you need browser APIs,
    event handlers, or React hooks. Data fetching belongs in Server Components.
 
-2. **`params` and `searchParams` are Promises in Next.js 15** — always `await` them:
+2. **`params` and `searchParams` are Promises in Next.js 16** — always `await` them:
    ```typescript
    // ✅ Correct
    export default async function Page({ params }: { params: Promise<{ id: string }> }) {
@@ -278,7 +288,7 @@ from your training data. Read the relevant guide in `node_modules/next/dist/docs
 4. **Server Actions** for form mutations — prefer `action={serverAction}` on `<form>` over
    client-side fetch calls to API routes for simple mutations.
 
-5. **`cookies()` and `headers()` are async** in Next.js 15:
+5. **`cookies()` and `headers()` are async** in Next.js 16:
    ```typescript
    const cookieStore = await cookies();
    const headersList = await headers();
