@@ -294,6 +294,11 @@ from your training data. Read the relevant guide in `node_modules/next/dist/docs
 
 ## 11. Git & PR Conventions
 
+> [!IMPORTANT]
+> **Agents may only `git commit` — never `git push`.** Do not push to any remote under any
+> circumstances. Stage and commit changes locally, then stop. Pushing is reserved for the
+> human engineer.
+
 - **Commit format**: `type(scope): description`
   - Types: `feat`, `fix`, `refactor`, `chore`, `docs`, `style`, `test`
   - Scope: `auth`, `projects`, `members`, `timesheets`, `deployments`, `assets`, `schema`, `ui`
