@@ -146,7 +146,7 @@ export default async function TimesheetsPage({ searchParams }: { searchParams: P
         <form className="flex min-h-11 items-center gap-2">
           <input type="hidden" name="tab" value={tab} />
           <label className="text-xs font-medium text-text-secondary" htmlFor="timesheet-month">Month</label>
-          <input id="timesheet-month" type="month" name="month" value={month} className="min-h-11 rounded-md border border-border-default bg-surface px-3 text-sm" />
+          <input id="timesheet-month" type="month" name="month" defaultValue={month} className="min-h-11 rounded-md border border-border-default bg-surface px-3 text-sm" />
           <button className="min-h-11 rounded-md border border-border-default px-3 text-sm font-semibold">Go</button>
         </form>
       </header>
