@@ -11,6 +11,12 @@ const roles = [
 
 test("every role sees the same shared board while mutations follow project scope", async ({ page }) => {
   const counts = new Map<string, number>();
+  const hydrationErrors: string[] = [];
+  page.on("console", (message) => {
+    if (message.type() === "error" && /hydration|didn't match/i.test(message.text())) {
+      hydrationErrors.push(message.text());
+    }
+  });
   for (const account of roles) {
     await page.context().clearCookies();
     await page.goto("/login");
@@ -23,6 +29,7 @@ test("every role sees the same shared board while mutations follow project scope
     expect(session.user.role).toBe(account.role);
     await page.goto("/board");
     await expect(page.getByRole("heading", { name: "Task board" })).toBeVisible();
+    expect(hydrationErrors).toEqual([]);
     const board = await page.evaluate(async () => (await fetch("/api/board/tasks")).json());
     expect(board.data.some((task: { title: string }) => task.title === "Shared board verification task")).toBe(true);
     counts.set(account.role, board.data.length);

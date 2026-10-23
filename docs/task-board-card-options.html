@@ -1,0 +1,441 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Task board card options</title>
+  <style>
+    :root {
+      color-scheme: light;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      color: #1e293b;
+      background: #f8fafc;
+      font-synthesis: none;
+      text-rendering: optimizeLegibility;
+      --surface: #fff;
+      --border: #e2e8f0;
+      --muted: #64748b;
+      --blue: #2563eb;
+      --blue-light: #dbeafe;
+      --amber: #a16207;
+      --amber-light: #fef9c3;
+      --red: #b91c1c;
+      --red-light: #fee2e2;
+      --green: #15803d;
+      --green-light: #dcfce7;
+    }
+
+    * { box-sizing: border-box; }
+
+    body { margin: 0; min-width: 320px; }
+
+    .page {
+      width: min(1180px, calc(100% - 40px));
+      margin: 0 auto;
+      padding: 44px 0 64px;
+    }
+
+    .eyebrow {
+      margin: 0 0 9px;
+      color: var(--blue);
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: .11em;
+      text-transform: uppercase;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: clamp(26px, 4vw, 38px);
+      letter-spacing: -.04em;
+      line-height: 1.12;
+    }
+
+    .intro {
+      max-width: 650px;
+      margin: 12px 0 30px;
+      color: #475569;
+      font-size: 15px;
+      line-height: 1.6;
+    }
+
+    .options {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      align-items: start;
+      gap: 18px;
+    }
+
+    .option {
+      position: relative;
+      min-width: 0;
+      cursor: pointer;
+    }
+
+    .choice {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      overflow: hidden;
+      clip-path: inset(50%);
+      white-space: nowrap;
+    }
+
+    .option-shell {
+      height: 100%;
+      padding: 16px;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      background: #f1f5f9;
+      transition: border-color 150ms ease, box-shadow 150ms ease;
+    }
+
+    .choice:checked + .option-shell {
+      border-color: var(--blue);
+      box-shadow: 0 0 0 3px rgb(37 99 235 / 12%);
+    }
+
+    .choice:focus-visible + .option-shell {
+      outline: 3px solid rgb(37 99 235 / 30%);
+      outline-offset: 3px;
+    }
+
+    .option-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+      margin: 0 0 13px;
+    }
+
+    .option-number {
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: .1em;
+      text-transform: uppercase;
+    }
+
+    .option-title {
+      margin: 0;
+      font-size: 14px;
+      font-weight: 700;
+    }
+
+    .choose {
+      padding: 5px 8px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: #fff;
+      color: #475569;
+      font-size: 11px;
+      font-weight: 650;
+    }
+
+    .column {
+      min-height: 236px;
+      padding: 12px;
+      border: 1px solid #e2e8f0;
+      border-radius: 9px;
+      background: #e9eef5;
+    }
+
+    .column-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 8px;
+      margin: 0 1px 11px;
+      color: #334155;
+      font-size: 11px;
+      font-weight: 750;
+      letter-spacing: .07em;
+      text-transform: uppercase;
+    }
+
+    .count {
+      display: grid;
+      width: 21px;
+      height: 21px;
+      place-items: center;
+      border-radius: 50%;
+      background: #dbe3ed;
+      color: #475569;
+      font-size: 11px;
+      letter-spacing: 0;
+    }
+
+    .task-card {
+      min-width: 0;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: var(--surface);
+      box-shadow: 0 1px 2px rgb(15 23 42 / 5%);
+    }
+
+    .task-key {
+      color: var(--muted);
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 10px;
+      font-weight: 650;
+      letter-spacing: .02em;
+    }
+
+    .task-title {
+      margin: 0;
+      color: #1e293b;
+      font-size: 14px;
+      font-weight: 680;
+      line-height: 1.4;
+    }
+
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      min-height: 22px;
+      padding: 3px 7px;
+      border-radius: 5px;
+      font-size: 10px;
+      font-weight: 650;
+      line-height: 1.2;
+      white-space: nowrap;
+    }
+
+    .pill-blue { background: var(--blue-light); color: #1e40af; }
+    .pill-amber { background: var(--amber-light); color: var(--amber); }
+    .pill-red { background: var(--red-light); color: var(--red); }
+    .pill-green { background: var(--green-light); color: var(--green); }
+    .pill-neutral { background: #f1f5f9; color: #475569; }
+
+    .labels { display: flex; flex-wrap: wrap; gap: 5px; }
+
+    .avatar {
+      display: grid;
+      width: 26px;
+      height: 26px;
+      flex: 0 0 26px;
+      place-items: center;
+      border: 1px solid #c7d2fe;
+      border-radius: 50%;
+      background: #eef2ff;
+      color: #3730a3;
+      font-size: 9px;
+      font-weight: 750;
+    }
+
+    .person {
+      display: flex;
+      min-width: 0;
+      align-items: center;
+      gap: 7px;
+      color: #475569;
+      font-size: 11px;
+      font-weight: 550;
+    }
+
+    .person-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .meta { color: #64748b; font-size: 10px; white-space: nowrap; }
+
+    .foot {
+      display: flex;
+      min-width: 0;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+
+    .separator { height: 1px; background: #eef2f7; }
+
+    /* Option 1: prioritize a readable title and restrained metadata. */
+    .card-clean { padding: 12px; border-left: 3px solid #f59e0b; }
+    .clean-top, .clean-bottom { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+    .clean-top { margin-bottom: 8px; }
+    .clean-title { margin: 0 0 10px; font-size: 15px; }
+    .clean-labels { margin-bottom: 12px; }
+    .clean-bottom { padding-top: 9px; }
+
+    /* Option 2: compact, Jira-like scan order. */
+    .card-compact { padding: 11px; }
+    .compact-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
+    .compact-title { margin-bottom: 10px; }
+    .compact-labels { margin-bottom: 12px; }
+    .compact-bottom { padding-top: 9px; border-top: 1px solid #eef2f7; }
+    .compact-left { display: flex; min-width: 0; align-items: center; gap: 7px; }
+    .compact-name { color: #475569; font-size: 11px; }
+    .priority-mark { display: inline-flex; align-items: center; gap: 4px; color: var(--red); font-size: 10px; font-weight: 700; }
+    .priority-mark::before { width: 3px; height: 12px; border-radius: 2px; background: currentColor; content: ""; }
+
+    /* Option 3: expose milestone and effort without making every item a badge. */
+    .card-context { padding: 12px; }
+    .context-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 9px; }
+    .context-title { margin-bottom: 10px; }
+    .milestone { margin-bottom: 11px; color: #475569; font-size: 10px; }
+    .milestone strong { color: #334155; font-weight: 650; }
+    .context-foot { padding-top: 9px; border-top: 1px solid #eef2f7; }
+    .context-labels { margin-bottom: 10px; }
+    .effort { min-width: 52px; text-align: right; }
+    .effort-value { color: #334155; font-size: 10px; font-weight: 650; }
+    .meter { height: 3px; margin-top: 4px; overflow: hidden; border-radius: 3px; background: #e2e8f0; }
+    .meter span { display: block; width: 58%; height: 100%; background: var(--blue); }
+
+    .notes {
+      margin: 13px 1px 0;
+      color: var(--muted);
+      font-size: 11px;
+      line-height: 1.5;
+    }
+
+    .selection {
+      width: fit-content;
+      max-width: 100%;
+      margin: 24px auto 0;
+      padding: 10px 15px;
+      border: 1px solid #cbd5e1;
+      border-radius: 8px;
+      background: rgb(255 255 255 / 96%);
+      box-shadow: 0 4px 12px rgb(15 23 42 / 8%);
+      color: #475569;
+      font-size: 12px;
+      text-align: center;
+    }
+
+    .choice:checked ~ .selection { color: #1e40af; }
+
+    @media (max-width: 900px) {
+      .options { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .option:last-child { grid-column: 1 / -1; }
+      .option:last-child .column { min-height: auto; }
+    }
+
+    @media (max-width: 620px) {
+      .page { width: min(100% - 24px, 440px); padding-top: 28px; }
+      .options { grid-template-columns: 1fr; gap: 12px; }
+      .option:last-child { grid-column: auto; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; }
+    }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <p class="eyebrow">Task board / visual options</p>
+    <h1>Choose a card direction</h1>
+    <p class="intro">
+      All three options use the same task data. Pick the one with the clearest scan order;
+      the mock is only a visual preview and does not change the app.
+    </p>
+
+    <section class="options" aria-label="Task card design options">
+      <label class="option">
+        <input class="choice" type="radio" name="card-option" value="1" aria-label="Select option 1, Clean signal">
+        <div class="option-shell">
+          <div class="option-head">
+            <div>
+              <span class="option-number">Option 1</span>
+              <h2 class="option-title">Clean signal</h2>
+            </div>
+            <span class="choose">Select</span>
+          </div>
+          <div class="column">
+            <div class="column-head"><span>In progress</span><span class="count">4</span></div>
+            <article class="task-card card-clean">
+              <div class="clean-top">
+                <span class="task-key">ENG-24-214</span>
+                <span class="pill pill-red">High</span>
+              </div>
+              <h3 class="task-title clean-title">Approve interface review package</h3>
+              <div class="labels clean-labels">
+                <span class="pill pill-blue">coordination</span>
+                <span class="pill pill-neutral">review</span>
+                <span class="pill pill-amber">Flagged</span>
+              </div>
+              <div class="separator"></div>
+              <div class="clean-bottom">
+                <span class="person"><span class="avatar">AC</span><span class="person-name">Avery Chen</span></span>
+                <span class="meta">Due Oct 28</span>
+              </div>
+            </article>
+          </div>
+          <p class="notes">Title-first, restrained badges, and a clear owner/date footer.</p>
+        </div>
+      </label>
+
+      <label class="option">
+        <input class="choice" type="radio" name="card-option" value="2" aria-label="Select option 2, Compact Jira">
+        <div class="option-shell">
+          <div class="option-head">
+            <div>
+              <span class="option-number">Option 2</span>
+              <h2 class="option-title">Compact Jira</h2>
+            </div>
+            <span class="choose">Select</span>
+          </div>
+          <div class="column">
+            <div class="column-head"><span>In progress</span><span class="count">4</span></div>
+            <article class="task-card card-compact">
+              <div class="compact-top">
+                <span class="task-key">ENG-24-214</span>
+                <span class="priority-mark">High</span>
+              </div>
+              <h3 class="task-title compact-title">Approve interface review package</h3>
+              <div class="labels compact-labels">
+                <span class="pill pill-blue">coordination</span>
+                <span class="pill pill-neutral">review</span>
+              </div>
+              <div class="foot compact-bottom">
+                <span class="compact-left">
+                  <span class="avatar">AC</span>
+                  <span class="person-name compact-name">Avery Chen</span>
+                </span>
+                <span class="meta">Oct 28 · 14/24h</span>
+              </div>
+            </article>
+          </div>
+          <p class="notes">Denser scan: key, priority, labels, then owner and effort on one footer.</p>
+        </div>
+      </label>
+
+      <label class="option">
+        <input class="choice" type="radio" name="card-option" value="3" aria-label="Select option 3, Context and effort">
+        <div class="option-shell">
+          <div class="option-head">
+            <div>
+              <span class="option-number">Option 3</span>
+              <h2 class="option-title">Context + effort</h2>
+            </div>
+            <span class="choose">Select</span>
+          </div>
+          <div class="column">
+            <div class="column-head"><span>In progress</span><span class="count">4</span></div>
+            <article class="task-card card-context">
+              <div class="context-top">
+                <span class="task-key">ENG-24-214</span>
+                <div class="labels">
+                  <span class="pill pill-red">High</span>
+                  <span class="pill pill-amber">Flagged</span>
+                </div>
+              </div>
+              <h3 class="task-title context-title">Approve interface review package</h3>
+              <p class="milestone">Milestone <strong>Interface review</strong></p>
+              <div class="labels context-labels">
+                <span class="pill pill-blue">coordination</span>
+                <span class="pill pill-neutral">review</span>
+              </div>
+              <div class="foot context-foot">
+                <span class="person"><span class="avatar">AC</span><span class="person-name">Avery Chen</span></span>
+                <span class="meta">Due Oct 28</span>
+                <span class="effort"><span class="effort-value">14 / 24h</span><span class="meter"><span></span></span></span>
+              </div>
+            </article>
+          </div>
+          <p class="notes">Keeps milestone and time progress visible; best when task context matters.</p>
+        </div>
+      </label>
+    </section>
+
+    <p class="selection">Select any card to highlight it, or tell me “Option 1”, “Option 2”, or “Option 3”.</p>
+  </main>
+</body>
+</html>

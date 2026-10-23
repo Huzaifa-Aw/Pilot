@@ -7,7 +7,7 @@ import { can } from "@/lib/permissions";
 import { prepareMetadataValues } from "@/lib/metadata";
 import { wouldCreateTaskDependencyCycle } from "@/lib/task-dependencies";
 import { taskUpdateSchema } from "@/lib/validations/task";
-import { isWorkflowTransitionAllowed, missingRequiredTaskFields, requiredTaskFieldLabels } from "@/lib/task-workflows";
+import { isWorkflowTransitionAllowed, missingRequiredTaskFields, requiredTaskFieldLabels, resolveWorkflowForProject } from "@/lib/task-workflows";
 import { getDefaultMetadataFields } from "@/lib/metadata";
 
 type RouteContext = { params: Promise<{ projectId: string; taskId: string }> };
@@ -139,25 +139,21 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
 
     let workflowStatus = null;
     if (requestedWorkflowStatusId || legacyStatus) {
-      const workflow = before.project.workflowId
-        ? await tx.taskWorkflow.findFirst({
-            where: { id: before.project.workflowId, organizationId: context.organizationId },
-            include: {
-              statuses: { where: { isActive: true }, orderBy: { sortOrder: "asc" } },
-            },
-          })
-        : null;
+      const workflow = await resolveWorkflowForProject(tx, context.organizationId, before.project.workflowId);
       if (!workflow) return { kind: "workflow" as const };
       workflowStatus = requestedWorkflowStatusId
         ? workflow.statuses.find(({ id }) => id === requestedWorkflowStatusId) ?? null
         : workflow.statuses.find(({ category }) => category === legacyStatus) ?? null;
       if (!workflowStatus) return { kind: "workflow-status" as const };
-      if (workflowStatus.id !== before.workflowStatusId) {
+      const currentWorkflowStatusId = before.workflowStatusId
+        ?? workflow.statuses.find(({ category }) => category === before.status)?.id
+        ?? null;
+      if (workflowStatus.id !== currentWorkflowStatusId) {
         const transitions = await tx.taskWorkflowTransition.findMany({
           where: { organizationId: context.organizationId, workflowId: workflow.id },
           select: { fromStatusId: true, toStatusId: true },
         });
-        if (!before.workflowStatusId || !isWorkflowTransitionAllowed(before.workflowStatusId, workflowStatus.id, transitions)) {
+        if (!currentWorkflowStatusId || !isWorkflowTransitionAllowed(currentWorkflowStatusId, workflowStatus.id, transitions)) {
           return { kind: "transition" as const };
         }
         const requiredValues = {

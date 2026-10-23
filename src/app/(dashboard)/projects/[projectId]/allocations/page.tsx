@@ -93,22 +93,23 @@ export default async function ProjectAllocationsPage({
         </section>
       )}
 
-      {roleAtLeast(context.role, "MANAGER") && (
-        <CsvImportPanel
-          title="Import allocations from CSV"
-          endpoint="/api/allocations/import"
-          template={allocationsCsvTemplate}
-          help="Import weekly allocations across projects. The member, project, and Monday week form the update key; capacity rules apply."
-        />
-      )}
-
       <section aria-labelledby="allocation-list-title" className="space-y-3">
         <div className="flex items-end justify-between gap-3">
           <div>
             <h2 id="allocation-list-title" className="font-heading text-lg font-semibold text-text-primary">Scheduled allocations</h2>
             <p className="mt-1 text-sm text-text-muted">Next 12 weeks.</p>
           </div>
-          <span className="text-xs text-text-muted">{allocations.length} assignments</span>
+          <div className="flex items-center gap-3">
+            {roleAtLeast(context.role, "MANAGER") && (
+              <CsvImportPanel
+                title="Import allocations from CSV"
+                endpoint="/api/allocations/import"
+                template={allocationsCsvTemplate}
+                help="Import weekly allocations across projects. The member, project, and Monday week form the update key; capacity rules apply."
+              />
+            )}
+            <span className="text-xs text-text-muted">{allocations.length} assignments</span>
+          </div>
         </div>
         {allocations.length ? (
           <ul className="space-y-3">

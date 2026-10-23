@@ -2,6 +2,7 @@
 
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 type PreviewRow = { rowNumber: number; action: "CREATE" | "UPDATE" | "SKIP" | "ERROR"; summary: string };
@@ -99,9 +100,13 @@ export function CsvImportPanel({
   }
 
   return (
-    <details className="rounded-lg border border-border-default bg-surface">
-      <summary className="flex min-h-12 cursor-pointer items-center px-4 text-sm font-semibold text-brand-primary">{title}</summary>
-      <div className="space-y-3 border-t border-border-default p-4">
+    <details className="group relative inline-block align-middle">
+      <summary aria-label={title} title={title} className="inline-flex min-h-9 cursor-pointer list-none items-center gap-1.5 rounded-md px-2 text-xs font-medium text-text-muted transition-colors duration-150 hover:bg-neutral-100 hover:text-text-secondary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-border-focus [&::-webkit-details-marker]:hidden">
+        <Upload size={14} aria-hidden="true" />
+        Import CSV
+      </summary>
+      <div className="absolute left-0 top-full z-40 mt-2 max-h-[min(80vh,42rem)] w-[min(90vw,36rem)] space-y-3 overflow-y-auto rounded-lg border border-border-default bg-surface p-4 shadow-lg">
+        <h2 className="text-sm font-semibold text-text-primary">{title}</h2>
         <p className="text-sm text-text-secondary">{help}</p>
         <Button type="button" variant="secondary" onClick={downloadTemplate}>Download CSV template</Button>
         <label className="block space-y-1.5">

@@ -1,7 +1,8 @@
 import "dotenv/config";
 import { defineConfig } from "@playwright/test";
 
-const baseURL = "http://localhost:3100";
+const port = process.env.PLAYWRIGHT_PORT ?? "3100";
+const baseURL = `http://localhost:${port}`;
 
 export default defineConfig({
   testDir: "./tests/e2e",
@@ -19,6 +20,6 @@ export default defineConfig({
     url: `${baseURL}/login`,
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,
-    env: { ...process.env, AUTH_URL: baseURL, HOSTNAME: "127.0.0.1", PORT: "3100" },
+    env: { ...process.env, AUTH_URL: baseURL, HOSTNAME: "127.0.0.1", PORT: port },
   },
 });
