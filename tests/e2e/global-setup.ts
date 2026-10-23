@@ -1,6 +1,7 @@
 import "dotenv/config";
 import { PrismaClient } from "@prisma/client";
 import { hash } from "bcryptjs";
+import { createDefaultTaskWorkflow } from "../../src/lib/task-workflows";
 
 const password = process.env.E2E_TEST_PASSWORD ?? "E2E-Only-Password-2026";
 const users = [
@@ -25,6 +26,9 @@ export default async function globalSetup() {
       update: { isActive: true },
       select: { id: true },
     });
+    const defaultWorkflow = await db.$transaction((tx) => createDefaultTaskWorkflow(tx, organization.id));
+    const backlogStatusId = defaultWorkflow.statuses.find(({ key }) => key === "BACKLOG")?.id;
+    if (!backlogStatusId) throw new Error("The E2E default workflow has no Backlog status.");
     await db.$transaction(async (tx) => {
       await tx.worklog.deleteMany({ where: { organizationId: organization.id } });
       await tx.timesheetPeriod.deleteMany({ where: { organizationId: organization.id } });
@@ -68,14 +72,14 @@ export default async function globalSetup() {
     });
     const project = await db.project.upsert({
       where: { organizationId_code: { organizationId: organization.id, code: "E2E-SHARED" } },
-      create: { organizationId: organization.id, code: "E2E-SHARED", title: "Shared access test project" },
-      update: { status: "ACTIVE" },
+      create: { organizationId: organization.id, code: "E2E-SHARED", title: "Shared access test project", workflowId: defaultWorkflow.id },
+      update: { status: "ACTIVE", workflowId: defaultWorkflow.id },
       select: { id: true, taskCounter: true },
     });
     const secondProject = await db.project.upsert({
       where: { organizationId_code: { organizationId: organization.id, code: "E2E-SECOND" } },
-      create: { organizationId: organization.id, code: "E2E-SECOND", title: "Second shared test project" },
-      update: { status: "ACTIVE" },
+      create: { organizationId: organization.id, code: "E2E-SECOND", title: "Second shared test project", workflowId: defaultWorkflow.id },
+      update: { status: "ACTIVE", workflowId: defaultWorkflow.id },
       select: { id: true },
     });
     for (const [index, member] of members.entries()) {
@@ -110,13 +114,14 @@ export default async function globalSetup() {
           sortOrder: updatedProject.taskCounter,
           title: "Shared board verification task",
           status: "BACKLOG",
+          workflowStatusId: backlogStatusId,
         },
         select: { id: true, taskNumber: true },
       });
     } else {
       await db.task.update({
         where: { id_organizationId: { id: task.id, organizationId: organization.id } },
-        data: { status: "BACKLOG", completedAt: null },
+        data: { status: "BACKLOG", workflowStatusId: backlogStatusId, completedAt: null },
       });
     }
     await db.taskAssignment.upsert({

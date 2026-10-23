@@ -125,13 +125,14 @@ export default async function AssetsPage({
           <p className="mt-2 text-sm text-text-secondary">Track equipment, documents, and other resources your team uses.</p>
         </div>
         {roleAtLeast(context.role, "MANAGER") && (
-          <Link href="/assets/new" className="inline-flex min-h-11 items-center justify-center gap-2 rounded-md bg-brand-primary px-4 text-sm font-semibold text-white hover:bg-brand-primary-600">
-            <Plus size={16} aria-hidden="true" /> Register asset
-          </Link>
+          <div className="flex items-center gap-2">
+            {roleAtLeast(context.role, "ADMIN") && <AssetCsvImportForm template={importTemplate} />}
+            <Link href="/assets/new" className="inline-flex min-h-11 items-center justify-center gap-2 rounded-md bg-brand-primary px-4 text-sm font-semibold text-white hover:bg-brand-primary-600">
+              <Plus size={16} aria-hidden="true" /> Register asset
+            </Link>
+          </div>
         )}
       </header>
-
-      {roleAtLeast(context.role, "ADMIN") && <AssetCsvImportForm template={importTemplate} />}
 
       <CompactFilters
         pathname="/assets"

@@ -153,14 +153,16 @@ export default async function PeoplePage({
           <p className="mt-2 text-sm text-text-secondary">Review weekly capacity and change a project allocation from the same screen.</p>
         </header>
         <PeopleTabs tab="allocations" />
-        <CsvImportPanel
-          title="Import allocations from CSV"
-          endpoint="/api/allocations/import"
-          template={allocationsCsvTemplate}
-          help="Upsert one weekly allocation per member, project, and Monday. The weekly 100% capacity guard applies to every row."
-        />
         <section className="space-y-3" aria-labelledby="allocation-list-title">
-          <h2 id="allocation-list-title" className="font-heading text-lg font-semibold text-text-primary">Next 12 weeks</h2>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <h2 id="allocation-list-title" className="font-heading text-lg font-semibold text-text-primary">Next 12 weeks</h2>
+            <CsvImportPanel
+              title="Import allocations from CSV"
+              endpoint="/api/allocations/import"
+              template={allocationsCsvTemplate}
+              help="Upsert one weekly allocation per member, project, and Monday. The weekly 100% capacity guard applies to every row."
+            />
+          </div>
           {allocations.length ? <ul className="space-y-3">{allocations.map((allocation) => (
             <li key={allocation.id} className="rounded-lg border border-border-default bg-surface p-4 sm:p-5">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -210,17 +212,19 @@ export default async function PeoplePage({
           <h1 className="mt-2 font-heading text-2xl font-semibold tracking-tight text-text-primary sm:text-3xl">People</h1>
           <p className="mt-2 text-sm text-text-secondary">{count} people · directory information is role-scoped.</p>
         </div>
-        {roleAtLeast(context.role, "ADMIN") && <Link href="/settings/members" className="inline-flex min-h-11 items-center justify-center gap-2 rounded-md bg-brand-primary px-4 text-sm font-semibold text-white transition-colors duration-150 hover:bg-brand-primary-600">Invite people <ArrowRight size={16} aria-hidden="true" /></Link>}
+        {roleAtLeast(context.role, "ADMIN") && (
+          <div className="flex items-center gap-2">
+            <CsvImportPanel
+              title="Update people from CSV"
+              endpoint="/api/members/import"
+              template={memberTemplate}
+              help="This updates existing organization members by email only. To add new people, use the invitation workflow. Blank optional cells keep current values."
+            />
+            <Link href="/settings/members" className="inline-flex min-h-11 items-center justify-center gap-2 rounded-md bg-brand-primary px-4 text-sm font-semibold text-white transition-colors duration-150 hover:bg-brand-primary-600">Invite people <ArrowRight size={16} aria-hidden="true" /></Link>
+          </div>
+        )}
       </header>
       {roleAtLeast(context.role, "MANAGER") && <PeopleTabs tab="directory" />}
-      {roleAtLeast(context.role, "ADMIN") && (
-        <CsvImportPanel
-          title="Update people from CSV"
-          endpoint="/api/members/import"
-          template={memberTemplate}
-          help="This updates existing organization members by email only. To add new people, use the invitation workflow. Blank optional cells keep current values."
-        />
-      )}
       {capacityMembers.length > 0 && roleAtLeast(context.role, "ENGINEER") && (
         <CapacityHeatmap members={capacityMembers.map((member) => ({ id: member.id, name: member.user.name ?? member.user.email, title: member.title }))} weeks={weeks} allocations={grid} />
       )}

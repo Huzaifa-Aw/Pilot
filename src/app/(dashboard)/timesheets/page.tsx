@@ -145,21 +145,23 @@ export default async function TimesheetsPage({ searchParams }: { searchParams: P
           <h1 className="mt-2 font-heading text-2xl font-semibold tracking-tight text-text-primary sm:text-3xl">Timesheets</h1>
           <p className="mt-2 text-sm text-text-secondary">Log time against projects and tasks, then submit the month for review.</p>
         </div>
-        <form className="flex min-h-11 items-center gap-2">
-          <input type="hidden" name="tab" value={tab} />
-          <label className="text-xs font-medium text-text-secondary" htmlFor="timesheet-month">Month</label>
-          <input id="timesheet-month" type="month" name="month" defaultValue={month} className="min-h-11 rounded-md border border-border-default bg-surface px-3 text-sm" />
-          <button className="min-h-11 rounded-md border border-border-default px-3 text-sm font-semibold">Go</button>
-        </form>
+        <div className="flex flex-wrap items-center gap-2">
+          {tab === "mine" && (
+            <CsvImportPanel
+              title="Import draft time records from CSV"
+              endpoint="/api/worklogs/import"
+              template={worklogsCsvTemplate}
+              help="New or updated time records stay in open or reopened timesheets. Submitted and approved months cannot be changed. Use a stable externalKey to update the same row."
+            />
+          )}
+          <form className="flex min-h-11 items-center gap-2">
+            <input type="hidden" name="tab" value={tab} />
+            <label className="text-xs font-medium text-text-secondary" htmlFor="timesheet-month">Month</label>
+            <input id="timesheet-month" type="month" name="month" defaultValue={month} className="min-h-11 rounded-md border border-border-default bg-surface px-3 text-sm" />
+            <button className="min-h-11 rounded-md border border-border-default px-3 text-sm font-semibold">Go</button>
+          </form>
+        </div>
       </header>
-      {tab === "mine" && (
-        <CsvImportPanel
-          title="Import draft time records from CSV"
-          endpoint="/api/worklogs/import"
-          template={worklogsCsvTemplate}
-          help="New or updated time records stay in open or reopened timesheets. Submitted and approved months cannot be changed. Use a stable externalKey to update the same row."
-        />
-      )}
 
       {notifications.length > 0 && tab === "mine" && (
         <aside className="rounded-lg border border-warning-light bg-warning-light/40 p-4" aria-label="Timesheet reminders">

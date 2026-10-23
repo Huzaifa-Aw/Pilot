@@ -1,56 +1,38 @@
 import type { Metadata } from "next";
 import { TaskPriority } from "@prisma/client";
-import { CompactFilters, type AppliedFilter } from "@/components/data-display/compact-filters";
 import { TaskBoard } from "@/components/data-display/task-board";
+import { TaskBoardAppliedFilters, TaskBoardFilters, type TaskBoardFilterField } from "@/components/data-display/task-board-filters";
 import { CsvImportPanel } from "@/components/forms/csv-import-panel";
 import { db } from "@/lib/db";
 import { getDefaultMetadataFields } from "@/lib/metadata";
 import { roleAtLeast } from "@/lib/rbac";
 import { resolveTenantContext } from "@/lib/tenant";
-import { taskFilterWhere, type TaskMetadataFilter } from "@/lib/task-filters";
+import { taskFilterWhere, taskStatusFilterOptions, type TaskMetadataFilter } from "@/lib/task-filters";
 import { metadataCsvHeaders } from "@/lib/metadata-csv";
 import { serializeCsvRow } from "@/lib/csv";
 import { redirect } from "next/navigation";
 
 export const metadata: Metadata = { title: "Board" };
 
-type BoardParams = {
-  project?: string;
-  assignee?: string;
-  reporter?: string;
-  status?: string;
-  priority?: string;
-  milestone?: string;
-  label?: string;
-  flagged?: string;
-  parent?: string;
-  blocked?: string;
-  discipline?: string;
-  dueFrom?: string;
-  dueTo?: string;
-  startFrom?: string;
-  startTo?: string;
-  createdFrom?: string;
-  createdTo?: string;
-  updatedFrom?: string;
-  updatedTo?: string;
-  completedFrom?: string;
-  completedTo?: string;
-  estimateMin?: string;
-  estimateMax?: string;
-  actualMin?: string;
-  actualMax?: string;
-  mine?: string;
-  q?: string;
-} & Record<string, string | undefined>;
+type BoardParams = Record<string, string | string[] | undefined>;
 
-function optionalDate(value?: string, endOfDay = false) {
+function parameterValues(value?: string | string[]) {
+  return value === undefined ? [] : Array.isArray(value) ? value : [value];
+}
+
+function parameterValue(value?: string | string[]) {
+  return Array.isArray(value) ? value[0] : value;
+}
+
+function optionalDate(value?: string | string[], endOfDay = false) {
+  value = parameterValue(value);
   if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return undefined;
   const date = new Date(`${value}T${endOfDay ? "23:59:59.999" : "00:00:00.000"}Z`);
   return Number.isNaN(date.getTime()) || date.toISOString().slice(0, 10) !== value ? undefined : date;
 }
 
-function optionalNumber(value?: string) {
+function optionalNumber(value?: string | string[]) {
+  value = parameterValue(value);
   if (!value?.trim()) return undefined;
   const parsed = Number(value);
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : undefined;
@@ -64,13 +46,6 @@ function validMetadataFilter(field: { type: string; options?: string[] }, value:
   return value.trim() !== "";
 }
 
-function displayDateRange(from?: string, to?: string) {
-  if (from && to) return `${from} – ${to}`;
-  if (from) return `From ${from}`;
-  if (to) return `Through ${to}`;
-  return "";
-}
-
 export default async function BoardPage({
   searchParams,
 }: {
@@ -79,22 +54,27 @@ export default async function BoardPage({
   const context = await resolveTenantContext();
   if (!context) redirect("/login");
   const params = await searchParams;
-  const search = params.q?.trim().slice(0, 120) ?? "";
-  const projectId = params.project?.trim() ?? "";
-  const assigneeId = params.assignee?.trim() ?? "";
-  const reporterId = params.reporter?.trim() ?? "";
-  const selectedPriority = Object.values(TaskPriority).find((value) => value === params.priority);
-  const statusId = params.status?.trim() ?? "";
-  const milestoneId = params.milestone?.trim() ?? "";
-  const labelId = params.label?.trim() ?? "";
-  const flagged = params.flagged === "true" ? true : params.flagged === "false" ? false : undefined;
-  const parent = params.parent === "has" || params.parent === "none" ? params.parent : undefined;
-  const blocked = params.blocked === "has" || params.blocked === "none" ? params.blocked : undefined;
-  const discipline = params.discipline?.trim().slice(0, 100) ?? "";
+  const search = parameterValue(params.q)?.trim().slice(0, 120) ?? "";
+  const projectIds = parameterValues(params.project);
+  const assigneeIds = parameterValues(params.assignee);
+  const reporterIds = parameterValues(params.reporter);
+  const priorities = parameterValues(params.priority).filter((value): value is TaskPriority => Object.values(TaskPriority).some((priority) => priority === value));
+  const statusIds = parameterValues(params.status);
+  const milestoneIds = parameterValues(params.milestone);
+  const labelIds = parameterValues(params.label);
+  const flaggedValue = parameterValue(params.flagged);
+  const flagged = flaggedValue === "true" ? true : flaggedValue === "false" ? false : undefined;
+  const parentValue = parameterValue(params.parent);
+  const parent = parentValue === "has" || parentValue === "none" ? parentValue : undefined;
+  const blockedValue = parameterValue(params.blocked);
+  const blocked = blockedValue === "has" || blockedValue === "none" ? blockedValue : undefined;
+  const disciplines = parameterValues(params.discipline).map((value) => value.trim().slice(0, 100)).filter(Boolean);
   const metadataFields = await getDefaultMetadataFields(context.organizationId, "task");
-  const metadataFilters: TaskMetadataFilter[] = metadataFields.flatMap((field) => {
-    const value = params[`meta_${field.key}`];
-    return value && validMetadataFilter(field, value) ? [{ field, value }] : [];
+  const metadataFilters: TaskMetadataFilter[] = metadataFields.flatMap((field): TaskMetadataFilter[] => {
+    const values = parameterValues(params[`meta_${field.key}`]).filter((value) => validMetadataFilter(field, value));
+    if (field.type === "multi-select") return values.length ? [{ field, values }] : [];
+    const value = values[0];
+    return value ? [{ field, value }] : [];
   });
 
   const [projects, members, milestones, labels, workflows, disciplineRows] = await Promise.all([
@@ -124,7 +104,7 @@ export default async function BoardPage({
       orderBy: { user: { name: "asc" } },
     }),
     db.milestone.findMany({
-      where: { organizationId: context.organizationId, ...(projectId ? { projectId } : {}) },
+      where: { organizationId: context.organizationId, ...(projectIds.length ? { projectId: { in: projectIds } } : {}) },
       select: { id: true, title: true, project: { select: { code: true } } },
       orderBy: [{ project: { code: "asc" } }, { sequenceNumber: "asc" }],
     }),
@@ -150,15 +130,19 @@ export default async function BoardPage({
     }),
   ]);
 
-  const project = projects.find(({ id }) => id === projectId);
-  const selectedStatus = workflows
+  const selectedProjectIds = projectIds.filter((id) => projects.some((project) => project.id === id));
+  const selectedStatuses = workflows
     .flatMap(({ statuses }) => statuses)
-    .find(({ id }) => id === statusId && (!project || project.workflow?.statuses.some((status) => status.id === id)));
-  const selectedMember = members.find(({ id }) => id === assigneeId);
-  const selectedReporter = members.find(({ id }) => id === reporterId);
-  const selectedMilestone = milestones.find(({ id }) => id === milestoneId);
-  const selectedLabel = labels.find(({ id }) => id === labelId);
-  const selectedDiscipline = disciplineRows.find(({ requiredDiscipline }) => requiredDiscipline === discipline)?.requiredDiscipline ?? "";
+    .filter(({ id }) => statusIds.includes(id));
+  const selectedAssignees = members.filter(({ id }) => assigneeIds.includes(id));
+  const selectedReporters = members.filter(({ id }) => reporterIds.includes(id));
+  const selectedMilestones = milestones.filter(({ id }) => milestoneIds.includes(id));
+  const selectedLabels = labels.filter(({ id }) => labelIds.includes(id));
+  const selectedDisciplines = disciplineRows.flatMap(({ requiredDiscipline }) =>
+    requiredDiscipline && disciplines.some((value) => value.toLowerCase() === requiredDiscipline.toLowerCase())
+      ? [requiredDiscipline]
+      : [],
+  );
   const startFrom = optionalDate(params.startFrom);
   const startTo = optionalDate(params.startTo, true);
   const dueFrom = optionalDate(params.dueFrom);
@@ -174,19 +158,19 @@ export default async function BoardPage({
   const actualMin = optionalNumber(params.actualMin);
   const actualMax = optionalNumber(params.actualMax);
   const where = taskFilterWhere(context.organizationId, {
-    projectId: project?.id,
-    workflowStatusId: selectedStatus?.id,
-    priority: selectedPriority,
-    milestoneId: selectedMilestone?.id,
-    assigneeId: selectedMember?.id,
-    reporterMemberId: selectedReporter?.id,
+    projectIds: selectedProjectIds,
+    workflowStatusIds: selectedStatuses.map(({ id }) => id),
+    priorities,
+    milestoneIds: selectedMilestones.map(({ id }) => id),
+    assigneeIds: selectedAssignees.map(({ id }) => id),
+    reporterMemberIds: selectedReporters.map(({ id }) => id),
     currentMemberId: context.memberId,
-    mine: params.mine === "true",
-    labelId: selectedLabel?.id,
+    mine: parameterValue(params.mine) === "true",
+    labelIds: selectedLabels.map(({ id }) => id),
     flagged,
     parent,
     blocked,
-    requiredDiscipline: selectedDiscipline,
+    requiredDisciplines: selectedDisciplines,
     search,
     startFrom,
     startTo,
@@ -272,37 +256,38 @@ export default async function BoardPage({
       })
     : [];
 
-  const activeFilters: AppliedFilter[] = [
-    { key: "q", label: "Search", value: search },
-    { key: "project", label: "Project", value: project ? `${project.code} · ${project.title}` : "" },
-    { key: "assignee", label: "Assignee", value: selectedMember?.user.name ?? selectedMember?.user.email ?? "" },
-    { key: "reporter", label: "Reporter", value: selectedReporter?.user.name ?? selectedReporter?.user.email ?? "" },
-    { key: "status", label: "Status", value: selectedStatus?.name ?? "" },
-    { key: "priority", label: "Priority", value: selectedPriority ?? "" },
-    { key: "milestone", label: "Milestone", value: selectedMilestone?.title ?? "" },
-    { key: "label", label: "Label", value: selectedLabel?.name ?? "" },
-    { key: "flagged", label: "Flag", value: flagged === true ? "Flagged" : flagged === false ? "Not flagged" : "" },
-    { key: "parent", label: "Parent task", value: parent === "has" ? "Has parent" : parent === "none" ? "No parent" : "" },
-    { key: "blocked", label: "Blocked by", value: blocked === "has" ? "Has blocker" : blocked === "none" ? "No blocker" : "" },
-    { key: "mine", label: "Tasks", value: params.mine === "true" ? "My tasks" : "" },
-    { key: "discipline", label: "Required discipline", value: selectedDiscipline },
-    { key: ["startFrom", "startTo"], label: "Start date", value: displayDateRange(startFrom && params.startFrom, startTo && params.startTo) },
-    { key: ["dueFrom", "dueTo"], label: "Due date", value: displayDateRange(dueFrom && params.dueFrom, dueTo && params.dueTo) },
-    { key: ["createdFrom", "createdTo"], label: "Created", value: displayDateRange(createdFrom && params.createdFrom, createdTo && params.createdTo) },
-    { key: ["updatedFrom", "updatedTo"], label: "Updated", value: displayDateRange(updatedFrom && params.updatedFrom, updatedTo && params.updatedTo) },
-    { key: ["completedFrom", "completedTo"], label: "Completed", value: displayDateRange(completedFrom && params.completedFrom, completedTo && params.completedTo) },
-    { key: ["estimateMin", "estimateMax"], label: "Estimated hours", value: estimateMin !== undefined || estimateMax !== undefined ? `${estimateMin ?? "0"}–${estimateMax ?? "any"}` : "" },
-    { key: ["actualMin", "actualMax"], label: "Actual hours", value: actualMin !== undefined || actualMax !== undefined ? `${actualMin ?? "0"}–${actualMax ?? "any"}` : "" },
-    ...metadataFilters.map(({ field, value }) => ({ key: `meta_${field.key}`, label: field.label, value })),
-  ].filter((filter) => filter.value !== "");
-
-  const fieldNames = [
-    "q", "project", "assignee", "reporter", "status", "priority", "milestone", "label", "flagged", "parent", "blocked",
-    "discipline", "mine", "startFrom", "startTo", "dueFrom", "dueTo", "createdFrom", "createdTo", "updatedFrom", "updatedTo",
-    "completedFrom", "completedTo", "estimateMin", "estimateMax", "actualMin", "actualMax",
-    ...metadataFields.map(({ key }) => `meta_${key}`),
-  ];
   const workflowsForBoard = [...new Map(projects.flatMap(({ workflow }) => workflow ? [[workflow.id, workflow] as const] : [])).values()];
+  const statusOptions = taskStatusFilterOptions(workflows.flatMap(({ statuses }) => statuses));
+  const filterFields: TaskBoardFilterField[] = [
+    { key: "parent", label: "Parent", kind: "options", options: [{ value: "has", label: "Has parent" }, { value: "none", label: "No parent" }] },
+    { key: "assignee", label: "Assignee", kind: "options", multiple: true, options: members.map(({ id, user }) => ({ value: id, label: user.name ?? user.email })) },
+    { key: "status", label: "Status", kind: "options", multiple: true, options: statusOptions },
+    { key: "priority", label: "Priority", kind: "options", multiple: true, options: Object.values(TaskPriority).map((value) => ({ value, label: value })) },
+    { key: "label", label: "Labels", kind: "options", multiple: true, options: labels.map(({ id, name }) => ({ value: id, label: name })) },
+    { key: "project", label: "Project", kind: "options", multiple: true, options: projects.map(({ id, code, title }) => ({ value: id, label: `${code} · ${title}` })) },
+    { key: "reporter", label: "Reporter", kind: "options", multiple: true, options: members.map(({ id, user }) => ({ value: id, label: user.name ?? user.email })) },
+    { key: "milestone", label: "Milestone", kind: "options", multiple: true, options: milestones.map(({ id, title, project }) => ({ value: id, label: `${project.code} · ${title}` })) },
+    { key: "blocked", label: "Blocked by", kind: "options", options: [{ value: "has", label: "Has blocker" }, { value: "none", label: "No blocker" }] },
+    { key: "flagged", label: "Flag", kind: "options", options: [{ value: "true", label: "Flagged" }, { value: "false", label: "Not flagged" }] },
+    { key: "discipline", label: "Required discipline", kind: "options", multiple: true, options: disciplineRows.flatMap(({ requiredDiscipline }) => requiredDiscipline ? [{ value: requiredDiscipline, label: requiredDiscipline }] : []) },
+    { key: "mine", label: "My tasks", kind: "toggle" },
+    { key: "q", label: "Search tasks", kind: "text" },
+    { key: "startDate", label: "Start date", kind: "range", fromKey: "startFrom", toKey: "startTo", inputType: "date" },
+    { key: "dueDate", label: "Due date", kind: "range", fromKey: "dueFrom", toKey: "dueTo", inputType: "date" },
+    { key: "createdDate", label: "Created", kind: "range", fromKey: "createdFrom", toKey: "createdTo", inputType: "date" },
+    { key: "updatedDate", label: "Updated", kind: "range", fromKey: "updatedFrom", toKey: "updatedTo", inputType: "date" },
+    { key: "completedDate", label: "Completed", kind: "range", fromKey: "completedFrom", toKey: "completedTo", inputType: "date" },
+    { key: "estimateHours", label: "Estimated hours", kind: "range", fromKey: "estimateMin", toKey: "estimateMax", inputType: "number", step: 0.25 },
+    { key: "actualHours", label: "Actual hours", kind: "range", fromKey: "actualMin", toKey: "actualMax", inputType: "number", step: 0.25 },
+    ...metadataFields.map((field): TaskBoardFilterField => {
+      const key = `meta_${field.key}`;
+      if (field.type === "boolean") return { key, label: field.label, kind: "options", options: [{ value: "true", label: "Yes" }, { value: "false", label: "No" }] };
+      if (field.type === "select" || field.type === "multi-select") {
+        return { key, label: field.label, kind: "options", multiple: field.type === "multi-select", options: (field.options ?? []).map((value) => ({ value, label: value })) };
+      }
+      return { key, label: field.label, kind: "value", inputType: field.type === "number" ? "number" : field.type === "date" ? "date" : "text" };
+    }),
+  ];
   const taskHeaders = ["projectCode", "taskNumber", "title", "description", "priority", "status", "milestoneSequence", "startDate", "dueDate", "estimatedHrs", "actualHrs", "requiredDiscipline", "assigneeEmails", "labels", "parentTaskNumber", "blockedByTaskNumber", ...metadataCsvHeaders(metadataFields).keys()];
   const taskTemplate = [
     serializeCsvRow(taskHeaders),
@@ -311,107 +296,31 @@ export default async function BoardPage({
 
   return (
     <div className="space-y-6">
-      <header>
-        <p className="text-xs font-semibold uppercase tracking-wider text-brand-primary">Shared workspace</p>
-        <h1 className="mt-2 font-heading text-2xl font-semibold tracking-tight text-text-primary sm:text-3xl">Task board</h1>
-        <p className="mt-2 text-sm text-text-secondary">Every project task is visible to the whole workspace. Filters focus the shared board; access rules control changes.</p>
-      </header>
-      {roleAtLeast(context.role, "MANAGER") && (
-        <CsvImportPanel
-          title="Import tasks from CSV"
-          endpoint="/api/tasks/import"
-          template={taskTemplate}
-          help="Use project code and optional task number to update an existing task. Separate assignee emails and labels with |. Workflow status names or keys are accepted."
-        />
-      )}
-      <CompactFilters pathname="/board" params={params} fieldNames={fieldNames} filters={activeFilters}>
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-          <label className="space-y-1.5"><span className="text-xs font-medium text-text-secondary">Search tasks</span><input name="q" defaultValue={search} placeholder="Title, description, project, or task number" className="min-h-11 w-full rounded-md border border-border-default px-3 text-sm" /></label>
-          <SelectFilter label="Project" name="project" value={project?.id ?? ""} options={projects.map(({ id, code, title }) => ({ value: id, label: `${code} · ${title}` }))} />
-          <SelectFilter label="Assignee" name="assignee" value={selectedMember?.id ?? ""} options={members.map(({ id, user }) => ({ value: id, label: user.name ?? user.email }))} />
-          <SelectFilter label="Reporter" name="reporter" value={selectedReporter?.id ?? ""} options={members.map(({ id, user }) => ({ value: id, label: user.name ?? user.email }))} />
-          <SelectFilter label="Status" name="status" value={selectedStatus?.id ?? ""} options={workflows.flatMap(({ statuses }) => statuses.map(({ id, name }) => ({ value: id, label: name }))).filter((option, index, all) => all.findIndex(({ value }) => value === option.value) === index)} />
-          <SelectFilter label="Priority" name="priority" value={selectedPriority ?? ""} options={Object.values(TaskPriority).map((value) => ({ value, label: value }))} />
-          <SelectFilter label="Milestone" name="milestone" value={selectedMilestone?.id ?? ""} options={milestones.map(({ id, title, project }) => ({ value: id, label: `${project.code} · ${title}` }))} />
-          <SelectFilter label="Label" name="label" value={selectedLabel?.id ?? ""} options={labels.map(({ id, name }) => ({ value: id, label: name }))} />
-          <SelectFilter label="Flag" name="flagged" value={params.flagged ?? ""} options={[{ value: "true", label: "Flagged" }, { value: "false", label: "Not flagged" }]} />
-          <SelectFilter label="Parent task" name="parent" value={parent ?? ""} options={[{ value: "has", label: "Has parent" }, { value: "none", label: "No parent" }]} />
-          <SelectFilter label="Blocked by" name="blocked" value={blocked ?? ""} options={[{ value: "has", label: "Has blocker" }, { value: "none", label: "No blocker" }]} />
-          <SelectFilter label="Required discipline" name="discipline" value={selectedDiscipline} options={disciplineRows.flatMap(({ requiredDiscipline }) => requiredDiscipline ? [{ value: requiredDiscipline, label: requiredDiscipline }] : [])} />
-          {(["startFrom", "startTo", "dueFrom", "dueTo", "createdFrom", "createdTo", "updatedFrom", "updatedTo", "completedFrom", "completedTo"] as const).map((name) => (
-            <label key={name} className="space-y-1.5"><span className="text-xs font-medium text-text-secondary">{dateLabel(name)}</span><input type="date" name={name} defaultValue={params[name] ?? ""} className="min-h-11 w-full rounded-md border border-border-default px-3 text-sm" /></label>
-          ))}
-          {(["estimateMin", "estimateMax", "actualMin", "actualMax"] as const).map((name) => (
-            <label key={name} className="space-y-1.5"><span className="text-xs font-medium text-text-secondary">{numberLabel(name)}</span><input type="number" min="0" step="0.25" name={name} defaultValue={params[name] ?? ""} className="min-h-11 w-full rounded-md border border-border-default px-3 text-sm" /></label>
-          ))}
-          <label className="flex min-h-11 items-center gap-2 text-sm text-text-secondary"><input type="checkbox" name="mine" value="true" defaultChecked={params.mine === "true"} className="size-4 accent-brand-primary" /> My tasks</label>
-          {metadataFields.map((field) => <MetadataFilter field={field} key={field.key} value={params[`meta_${field.key}`] ?? ""} />)}
+      <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-wider text-brand-primary">Shared workspace</p>
+          <h1 className="mt-2 font-heading text-2xl font-semibold tracking-tight text-text-primary sm:text-3xl">Task board</h1>
+          <p className="mt-2 text-sm text-text-secondary">Every project task is visible to the whole workspace. Filters focus the shared board; access rules control changes.</p>
         </div>
-      </CompactFilters>
+        {roleAtLeast(context.role, "MANAGER") && (
+          <CsvImportPanel
+            title="Import tasks from CSV"
+            endpoint="/api/tasks/import"
+            template={taskTemplate}
+            help="Use project code and optional task number to update an existing task. Separate assignee emails and labels with |. Workflow status names or keys are accepted."
+          />
+        )}
+      </header>
       <TaskBoard
         initialTasks={tasks}
         workflows={workflowsForBoard}
         canMoveAll={roleAtLeast(context.role, "ADMIN")}
         canMoveProjectIds={projectMemberships.map(({ projectId }) => projectId)}
         currentMemberId={context.memberId}
+        filterKey={JSON.stringify(params)}
+        filterControls={<TaskBoardFilters fields={filterFields} />}
+        appliedFilters={<TaskBoardAppliedFilters fields={filterFields} />}
       />
     </div>
   );
-}
-
-function SelectFilter({
-  label,
-  name,
-  value,
-  options,
-}: {
-  label: string;
-  name: string;
-  value: string;
-  options: Array<{ value: string; label: string }>;
-}) {
-  return (
-    <label className="space-y-1.5">
-      <span className="text-xs font-medium text-text-secondary">{label}</span>
-      <select name={name} defaultValue={value} className="min-h-11 w-full rounded-md border border-border-default bg-surface px-3 text-sm">
-        <option value="">All {label.toLowerCase()}</option>
-        {options.map(({ value: optionValue, label: optionLabel }) => <option key={optionValue} value={optionValue}>{optionLabel}</option>)}
-      </select>
-    </label>
-  );
-}
-
-function MetadataFilter({ field, value }: { field: Awaited<ReturnType<typeof getDefaultMetadataFields>>[number]; value: string }) {
-  const name = `meta_${field.key}`;
-  return (
-    <label className="space-y-1.5">
-      <span className="text-xs font-medium text-text-secondary">{field.label}</span>
-      {field.type === "boolean" ? (
-        <select name={name} defaultValue={value} className="min-h-11 w-full rounded-md border border-border-default bg-surface px-3 text-sm"><option value="">Any</option><option value="true">Yes</option><option value="false">No</option></select>
-      ) : field.type === "select" || field.type === "multi-select" ? (
-        <select name={name} defaultValue={value} className="min-h-11 w-full rounded-md border border-border-default bg-surface px-3 text-sm"><option value="">Any</option>{field.options?.map((option) => <option key={option} value={option}>{option}</option>)}</select>
-      ) : (
-        <input name={name} type={field.type === "number" ? "number" : field.type === "date" ? "date" : "text"} defaultValue={value} className="min-h-11 w-full rounded-md border border-border-default px-3 text-sm" />
-      )}
-    </label>
-  );
-}
-
-function dateLabel(name: string) {
-  const labels: Record<string, string> = {
-    startFrom: "Start date from", startTo: "Start date to",
-    dueFrom: "Due date from", dueTo: "Due date to",
-    createdFrom: "Created from", createdTo: "Created to",
-    updatedFrom: "Updated from", updatedTo: "Updated to",
-    completedFrom: "Completed from", completedTo: "Completed to",
-  };
-  return labels[name] ?? name;
-}
-
-function numberLabel(name: string) {
-  const labels: Record<string, string> = {
-    estimateMin: "Estimated hours from", estimateMax: "Estimated hours to",
-    actualMin: "Actual hours from", actualMax: "Actual hours to",
-  };
-  return labels[name] ?? name;
 }

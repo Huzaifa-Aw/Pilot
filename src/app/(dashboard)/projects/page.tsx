@@ -55,18 +55,20 @@ export default async function ProjectsPage({
           <h1 className="mt-2 font-heading text-2xl font-semibold tracking-tight text-text-primary sm:text-3xl">Projects</h1>
           <p className="mt-2 text-sm text-text-secondary">Plan work, track milestones, and keep your team aligned.</p>
         </div>
-        {roleAtLeast(context.role, "MANAGER") && <Link href="/projects/new" className="inline-flex min-h-11 items-center justify-center gap-2 rounded-md bg-brand-primary px-4 text-sm font-semibold text-white transition-colors duration-150 hover:bg-brand-primary-600">
-          <Plus size={16} aria-hidden="true" /> Create project
-        </Link>}
+        {roleAtLeast(context.role, "MANAGER") && (
+          <div className="flex items-center gap-2">
+            <CsvImportPanel
+              title="Import projects from CSV"
+              endpoint="/api/projects/import"
+              template={importTemplate}
+              help="Required columns: code and title. Existing project codes update matching projects. Blank optional cells keep current values."
+            />
+            <Link href="/projects/new" className="inline-flex min-h-11 items-center justify-center gap-2 rounded-md bg-brand-primary px-4 text-sm font-semibold text-white transition-colors duration-150 hover:bg-brand-primary-600">
+              <Plus size={16} aria-hidden="true" /> Create project
+            </Link>
+          </div>
+        )}
       </header>
-      {roleAtLeast(context.role, "MANAGER") && (
-        <CsvImportPanel
-          title="Import projects from CSV"
-          endpoint="/api/projects/import"
-          template={importTemplate}
-          help="Required columns: code and title. Existing project codes update matching projects. Blank optional cells keep current values."
-        />
-      )}
 
       <CompactFilters
         pathname="/projects"

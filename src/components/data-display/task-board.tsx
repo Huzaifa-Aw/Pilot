@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState, type FormEvent } from "react";
 import Link from "next/link";
 import {
   DndContext,
@@ -14,7 +14,7 @@ import {
   type DragEndEvent,
 } from "@dnd-kit/core";
 import { CSS } from "@dnd-kit/utilities";
-import { Flag, GripVertical, Rows3, View } from "lucide-react";
+import { Flag, Rows3, View } from "lucide-react";
 import type { DeploymentStatus, TaskPriority, TaskStatus } from "@prisma/client";
 import { OnDeploymentBadge } from "@/components/data-display/on-deployment-badge";
 import { TaskLabelBadge } from "@/components/data-display/task-label-badge";
@@ -108,14 +108,25 @@ export function TaskBoard({
   canMoveAll,
   canMoveProjectIds,
   currentMemberId,
+  filterKey,
+  filterControls,
+  appliedFilters,
 }: {
   initialTasks: BoardTask[];
   workflows: TaskWorkflow[];
   canMoveAll: boolean;
   canMoveProjectIds: string[];
   currentMemberId: string;
+  filterKey: string;
+  filterControls?: React.ReactNode;
+  appliedFilters?: React.ReactNode;
 }) {
-  const [tasks, setTasks] = useState(initialTasks);
+  const [taskState, setTaskState] = useState({ key: filterKey, tasks: initialTasks });
+  const tasks = taskState.key === filterKey ? taskState.tasks : initialTasks;
+  function setTasks(next: BoardTask[] | ((current: BoardTask[]) => BoardTask[])) {
+    const current = taskState.key === filterKey ? taskState.tasks : initialTasks;
+    setTaskState({ key: filterKey, tasks: typeof next === "function" ? next(current) : next });
+  }
   const [error, setError] = useState("");
   const [swimlane, setSwimlane] = useState<Swimlane>("none");
   const [view, setView] = useState<"board" | "list">("board");
@@ -129,7 +140,7 @@ export function TaskBoard({
 
   async function updateTask(
     task: BoardTask,
-    update: { workflowStatusId?: string; sortOrder?: number; flaggedAt?: Date | null },
+    update: { workflowStatusId?: string; sortOrder?: number; flaggedAt?: Date | null; flagReason?: string | null },
   ) {
     const previous = tasks;
     const targetStatus = update.workflowStatusId
@@ -142,6 +153,7 @@ export function TaskBoard({
           ...(targetStatus ? { workflowStatusId: targetStatus.id, status: targetStatus.category } : {}),
           ...(update.sortOrder !== undefined ? { sortOrder: update.sortOrder } : {}),
           ...(update.flaggedAt !== undefined ? { flaggedAt: update.flaggedAt } : {}),
+          ...(update.flagReason !== undefined ? { flagReason: update.flagReason } : {}),
         }
       : item));
     try {
@@ -213,25 +225,31 @@ export function TaskBoard({
     <div className="space-y-4">
       {error && <p role="alert" className="rounded-md border border-error-light bg-error-light p-3 text-sm text-error-dark">{error}</p>}
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-2" role="group" aria-label="Task view">
-          <Button type="button" variant={view === "board" ? "primary" : "secondary"} aria-pressed={view === "board"} onClick={() => setView("board")}><View aria-hidden="true" /> Board</Button>
-          <Button type="button" variant={view === "list" ? "primary" : "secondary"} aria-pressed={view === "list"} onClick={() => setView("list")}><Rows3 aria-hidden="true" /> List</Button>
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
+          <div className="flex items-center gap-2" role="group" aria-label="Task view">
+            <Button type="button" variant={view === "board" ? "primary" : "secondary"} aria-pressed={view === "board"} onClick={() => setView("board")}><View aria-hidden="true" /> Board</Button>
+            <Button type="button" variant={view === "list" ? "primary" : "secondary"} aria-pressed={view === "list"} onClick={() => setView("list")}><Rows3 aria-hidden="true" /> List</Button>
+          </div>
+          {appliedFilters}
         </div>
-        {view === "board" && <label className="flex items-center gap-2 text-sm text-text-secondary">
-          <span className="font-medium">Swimlane</span>
-          <select value={swimlane} onChange={(event) => {
-            const value = event.target.value;
-            if (value === "none" || value === "project" || value === "assignee") setSwimlane(value);
-          }} className="min-h-11 rounded-md border border-border-default bg-surface px-3">
-            <option value="none">Workflow</option><option value="project">Project</option><option value="assignee">Assignee</option>
-          </select>
-        </label>}
-        {view === "list" && <label className="flex items-center gap-2 text-sm text-text-secondary">
-          <span className="font-medium">Sort</span>
-          <select value={sort} onChange={(event) => setSort(event.target.value as ListSort)} className="min-h-11 rounded-md border border-border-default bg-surface px-3">
-            <option value="status">Workflow status</option><option value="priority">Priority</option><option value="dueDate">Due date</option><option value="title">Title</option>
-          </select>
-        </label>}
+        <div className="flex flex-wrap items-center justify-end gap-3">
+          {filterControls}
+          {view === "board" && <label className="flex items-center gap-2 text-sm text-text-secondary">
+            <span className="font-medium">Swimlane</span>
+            <select value={swimlane} onChange={(event) => {
+              const value = event.target.value;
+              if (value === "none" || value === "project" || value === "assignee") setSwimlane(value);
+            }} className="min-h-11 rounded-md border border-border-default bg-surface px-3">
+              <option value="none">Workflow</option><option value="project">Project</option><option value="assignee">Assignee</option>
+            </select>
+          </label>}
+          {view === "list" && <label className="flex items-center gap-2 text-sm text-text-secondary">
+            <span className="font-medium">Sort</span>
+            <select value={sort} onChange={(event) => setSort(event.target.value as ListSort)} className="min-h-11 rounded-md border border-border-default bg-surface px-3">
+              <option value="status">Workflow status</option><option value="priority">Priority</option><option value="dueDate">Due date</option><option value="title">Title</option>
+            </select>
+          </label>}
+        </div>
       </div>
 
       {view === "board" ? (
@@ -242,7 +260,7 @@ export function TaskBoard({
               {lanes.flatMap((lane) => lane.workflow.statuses.map((status) => <option key={`${lane.id}-${status.id}`} value={`board-column-${lane.id}-${status.id}`}>{lane.label ? `${lane.label} · ` : ""}${status.name}</option>))}
             </select>
           </label>
-          <DndContext sensors={sensors} collisionDetection={closestCorners} onDragEnd={(event) => void onDragEnd(event)}>
+          <DndContext id="task-board" sensors={sensors} collisionDetection={closestCorners} onDragEnd={(event) => void onDragEnd(event)}>
             <div className="space-y-5">
               {lanes.map((lane) => (
                 <section key={lane.id} className="space-y-2">
@@ -268,7 +286,9 @@ export function TaskBoard({
                               statuses={task.project.workflow?.statuses ?? []}
                               canMove={canMoveAll || canMoveProjectIds.includes(task.projectId) || task.assignments.some(({ memberId }) => memberId === currentMemberId)}
                               onMove={(workflowStatusId) => void updateTask(task, { workflowStatusId })}
-                              onToggleFlag={() => void updateTask(task, { flaggedAt: task.flaggedAt ? null : new Date() })}
+                              onToggleFlag={(reason) => void updateTask(task, task.flaggedAt
+                                ? { flaggedAt: null, flagReason: null }
+                                : { flaggedAt: new Date(), flagReason: reason ?? null })}
                             />
                           ))}
                         </BoardColumn>
@@ -354,53 +374,145 @@ function BoardCard({
   statuses: WorkflowStatus[];
   canMove: boolean;
   onMove: (workflowStatusId: string) => void;
-  onToggleFlag: () => void;
+  onToggleFlag: (reason?: string) => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({ id: task.id, disabled: !canMove });
+  const flagDialogRef = useRef<HTMLDialogElement>(null);
+  const [flagReason, setFlagReason] = useState("");
+  const { onKeyDown, ...pointerListeners } = listeners ?? {};
   const style = { transform: CSS.Translate.toString(transform), opacity: isDragging ? 0.6 : 1 };
   const disciplineMismatch = Boolean(task.requiredDiscipline && task.assignments.some(({ member }) =>
     task.requiredDiscipline?.trim().toLowerCase() !== (member.discipline ?? "").trim().toLowerCase()));
   const overdue = Boolean(task.dueDate && task.dueDate < new Date(new Date().toISOString().slice(0, 10) + "T00:00:00.000Z") && task.status !== "COMPLETED" && task.status !== "CANCELLED");
+  const assigneeNames = task.assignments.map(({ member }) => member.user.name ?? "Member");
+  const primaryAssignee = task.assignments[0]?.member;
+  const primaryName = assigneeNames[0] ?? "Unassigned";
+  const initials = primaryAssignee
+    ? primaryName.trim().split(/\s+/).map((part) => part[0]).join("").slice(0, 2).toUpperCase()
+    : "—";
+  const priorityMarker = {
+    CRITICAL: { marker: "bg-error", text: "text-error-dark" },
+    HIGH: { marker: "bg-error", text: "text-error-dark" },
+    MEDIUM: { marker: "bg-warning", text: "text-warning-dark" },
+    LOW: { marker: "bg-neutral-400", text: "text-text-secondary" },
+  }[task.priority];
+
+  function submitFlag(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const reason = flagReason.trim();
+    if (!reason) return;
+    onToggleFlag(reason);
+    flagDialogRef.current?.close();
+  }
+
   return (
-    <article ref={setNodeRef} style={style} className="rounded-md border border-border-default bg-surface p-3 shadow-xs">
-      <div className="flex items-start justify-between gap-2">
-        <Link href={`/board/tasks/${task.id}`} className="min-w-0 flex-1">
-          <p className="font-mono text-[11px] text-text-muted">{task.project.code}-{task.taskNumber ?? task.id.slice(0, 6)} · {task.project.title}</p>
-          <h4 className="mt-1 text-sm font-semibold leading-5 text-text-primary">{task.title}</h4>
+    <article
+      ref={setNodeRef}
+      style={style}
+      {...(canMove ? attributes : {})}
+      {...(canMove ? pointerListeners : {})}
+      role="group"
+      tabIndex={canMove ? attributes.tabIndex : undefined}
+      aria-label={canMove ? `Task ${task.title}. Drag to move between statuses.` : undefined}
+      aria-roledescription={canMove ? "draggable task" : undefined}
+      onKeyDown={canMove && onKeyDown ? (event) => {
+        if (event.target === event.currentTarget) onKeyDown(event);
+      } : undefined}
+      className={`rounded-md border border-border-default bg-surface p-3 shadow-xs transition-colors duration-150 ${canMove ? "cursor-grab hover:border-neutral-300 active:cursor-grabbing" : ""} ${isDragging ? "z-10 opacity-60 shadow-md" : ""}`}
+    >
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <Link href={`/board/tasks/${task.id}`} className="min-w-0 truncate font-mono text-[11px] text-text-muted hover:text-brand-primary">
+          {task.project.code}-{task.taskNumber ?? task.id.slice(0, 6)}
         </Link>
-        {canMove && (
-          <button type="button" aria-label={`Drag ${task.title}`} className="inline-flex min-h-10 min-w-10 touch-none items-center justify-center rounded-md border border-border-default text-text-muted hover:bg-neutral-50 focus-visible:outline-2 focus-visible:outline-brand-primary" {...listeners} {...attributes}>
-            <GripVertical size={17} aria-hidden="true" />
-          </button>
-        )}
+        <div className="flex shrink-0 items-center gap-2">
+          <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-text-secondary">
+            <span aria-hidden="true" className={`h-3 w-[3px] rounded-full ${priorityMarker.marker}`} />
+            <span className={priorityMarker.text}>{task.priority.toLowerCase()}</span>
+          </span>
+          {task.flaggedAt && !canMove && <Flag size={14} aria-label="Flagged task" className="text-warning-dark" />}
+          {canMove && (
+            <button
+              type="button"
+              aria-pressed={Boolean(task.flaggedAt)}
+              aria-label={`${task.flaggedAt ? "Remove flag from" : "Flag"} ${task.title}`}
+              onPointerDown={(event) => event.stopPropagation()}
+              onClick={() => {
+                if (task.flaggedAt) onToggleFlag();
+                else {
+                  setFlagReason("");
+                  flagDialogRef.current?.showModal();
+                }
+              }}
+              className={`inline-flex size-7 items-center justify-center rounded-md transition-colors duration-150 focus-visible:outline-2 focus-visible:outline-brand-primary ${task.flaggedAt ? "bg-warning-light text-warning-dark" : "text-text-muted hover:bg-neutral-100"}`}
+            >
+              <Flag size={14} aria-hidden="true" />
+            </button>
+          )}
+        </div>
       </div>
+      <Link href={`/board/tasks/${task.id}`} className="block rounded-sm focus-visible:outline-2 focus-visible:outline-brand-primary">
+        <h4 className="text-sm font-semibold leading-5 text-text-primary">{task.title}</h4>
+      </Link>
       <div className="mt-2 flex flex-wrap items-center gap-1.5">
-        <StatusBadge status={task.priority} />
-        {task.dueDate && <span className={`text-xs ${overdue ? "font-semibold text-error-dark" : "text-text-muted"}`}>{overdue ? "Overdue · " : "Due "}{new Intl.DateTimeFormat("en", { month: "short", day: "numeric", timeZone: "UTC" }).format(task.dueDate)}</span>}
-        {task.milestone && <span className="rounded bg-neutral-100 px-2 py-1 text-[11px] text-text-secondary">{task.milestone.title}</span>}
+        {task.labels.slice(0, 2).map(({ label }) => <TaskLabelBadge key={label.id} name={label.name} color={label.color} />)}
+        {task.labels.length > 2 && <span className="rounded bg-neutral-100 px-2 py-1 text-[11px] text-text-secondary" title={task.labels.slice(2).map(({ label }) => label.name).join(", ")}>+{task.labels.length - 2}</span>}
         {disciplineMismatch && <span className="rounded bg-warning-light px-2 py-1 text-[11px] text-warning-dark">Discipline mismatch</span>}
-        {task.flaggedAt && <StatusBadge status="FLAGGED" />}
-        {task.labels.map(({ label }) => <TaskLabelBadge key={label.id} name={label.name} color={label.color} />)}
       </div>
-      <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
-        <span className="text-xs text-text-secondary">{task.assignments.map(({ member }) => member.user.name ?? "Member").join(", ") || "Unassigned"}</span>
+      <div className="mt-3 flex min-w-0 flex-wrap items-center justify-between gap-x-2 gap-y-1 border-t border-neutral-100 pt-2">
+        <span className="flex min-w-0 items-center gap-1.5" title={assigneeNames.join(", ") || "Unassigned"}>
+          <span aria-hidden="true" className="flex size-6 shrink-0 items-center justify-center rounded-full border border-info-light bg-info-light text-[9px] font-semibold text-info-dark">{initials}</span>
+          <span className="truncate text-xs text-text-secondary">{primaryName}</span>
+          {assigneeNames.length > 1 && <span className="shrink-0 text-[10px] text-text-muted">+{assigneeNames.length - 1}</span>}
+        </span>
+        <span className={`shrink-0 text-[11px] ${overdue ? "font-semibold text-error-dark" : "text-text-muted"}`}>
+          {task.dueDate
+            ? `${overdue ? "Overdue · " : ""}${new Intl.DateTimeFormat("en", { month: "short", day: "numeric", timeZone: "UTC" }).format(task.dueDate)}`
+            : "No due date"}
+          {task.estimatedHrs !== null && <span className="ml-2 tabular-nums">{task.actualHrs}/{task.estimatedHrs}h</span>}
+        </span>
         {task.assignments.flatMap(({ memberId, member }) => member.deploymentMemberships.map(({ deployment }) => <OnDeploymentBadge key={`${task.id}-${memberId}-deployment`} status={deployment.status} startDate={deployment.startDate} endDate={deployment.endDate} location={deployment.location} />))}
-        <span className="text-xs tabular-nums text-text-muted">{task.actualHrs}h{task.estimatedHrs ? ` / ${task.estimatedHrs}h` : ""}</span>
       </div>
       {canMove && (
-        <div className="mt-2 flex items-center gap-2">
+        <div className="mt-2 md:hidden" onPointerDown={(event) => event.stopPropagation()}>
           <label className="min-w-0 flex-1 text-xs text-text-secondary">
             <span className="sr-only">Move {task.title} to status</span>
             <select aria-label={`Move ${task.title} to status`} value={taskStatusId(task)} onChange={(event) => onMove(event.target.value)} className="min-h-10 w-full rounded-md border border-border-default bg-surface px-2 text-xs">
               {statuses.map((status) => <option value={status.id} key={status.id}>{status.name}</option>)}
             </select>
           </label>
-          <button type="button" aria-pressed={Boolean(task.flaggedAt)} aria-label={`${task.flaggedAt ? "Remove flag from" : "Flag"} ${task.title}`} onClick={onToggleFlag} className={`inline-flex min-h-10 items-center gap-1 rounded-md px-2 text-xs font-medium transition-colors duration-150 ${task.flaggedAt ? "bg-warning-light text-warning-dark" : "text-text-muted hover:bg-neutral-100"}`}>
-            <Flag size={14} aria-hidden="true" />{task.flaggedAt ? "Flagged" : "Flag"}
-          </button>
         </div>
       )}
       {!canMove && <p className="mt-2 text-[11px] text-text-muted">Read-only — ask a project manager to move this task.</p>}
+      <dialog
+        ref={flagDialogRef}
+        aria-labelledby={`flag-task-title-${task.id}`}
+        aria-describedby={`flag-task-description-${task.id}`}
+        onPointerDown={(event) => event.stopPropagation()}
+        className="fixed inset-0 m-auto w-[calc(100%-2rem)] max-w-md rounded-lg border border-border-default bg-surface p-0 text-text-primary shadow-lg backdrop:bg-neutral-900/40"
+      >
+        <form onSubmit={submitFlag} className="space-y-4 p-5">
+          <div>
+            <h2 id={`flag-task-title-${task.id}`} className="text-base font-semibold">Flag task</h2>
+            <p id={`flag-task-description-${task.id}`} className="mt-1 text-sm text-text-secondary">{task.title}</p>
+          </div>
+          <label className="block space-y-1.5">
+            <span className="text-sm font-medium text-text-secondary">Reason <span className="text-error-dark">Required</span></span>
+            <textarea
+              autoFocus
+              required
+              maxLength={2000}
+              rows={4}
+              value={flagReason}
+              onChange={(event) => setFlagReason(event.target.value)}
+              className="w-full resize-y rounded-md border border-border-default bg-surface px-3 py-2 text-sm focus-visible:outline-2 focus-visible:outline-brand-primary"
+            />
+          </label>
+          <div className="flex justify-end gap-2">
+            <button type="button" onClick={() => flagDialogRef.current?.close()} className="min-h-10 rounded-md border border-border-default px-3 text-sm font-medium text-text-secondary transition-colors duration-150 hover:bg-neutral-50 focus-visible:outline-2 focus-visible:outline-brand-primary">Cancel</button>
+            <button type="submit" disabled={!flagReason.trim()} className="min-h-10 rounded-md bg-warning-light px-3 text-sm font-semibold text-warning-dark transition-colors duration-150 hover:bg-warning-light/80 disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-brand-primary">Flag task</button>
+          </div>
+        </form>
+      </dialog>
     </article>
   );
 }

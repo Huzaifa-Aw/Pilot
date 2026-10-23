@@ -53,20 +53,19 @@ export default async function DeploymentsPage() {
           <p className="mt-2 text-sm text-text-secondary">Plan member assignments and see overlapping project work.</p>
         </div>
         {roleAtLeast(context.role, "MANAGER") && (
-          <Link href="/deployments/new" className="inline-flex min-h-11 items-center justify-center gap-2 rounded-md bg-brand-primary px-4 text-sm font-semibold text-white hover:bg-brand-primary-600">
-            <Plus size={16} aria-hidden="true" /> Schedule deployment
-          </Link>
+          <div className="flex items-center gap-2">
+            <CsvImportPanel
+              title="Import deployments from CSV"
+              endpoint="/api/deployments/import"
+              template={deploymentTemplate}
+              help="Leave deploymentId blank to create. Provide an existing ID to update; separate member emails with |. Date ranges and capacity conflicts are rechecked."
+            />
+            <Link href="/deployments/new" className="inline-flex min-h-11 items-center justify-center gap-2 rounded-md bg-brand-primary px-4 text-sm font-semibold text-white hover:bg-brand-primary-600">
+              <Plus size={16} aria-hidden="true" /> Schedule deployment
+            </Link>
+          </div>
         )}
       </header>
-
-      {roleAtLeast(context.role, "MANAGER") && (
-        <CsvImportPanel
-          title="Import deployments from CSV"
-          endpoint="/api/deployments/import"
-          template={deploymentTemplate}
-          help="Leave deploymentId blank to create. Provide an existing ID to update; separate member emails with |. Date ranges and capacity conflicts are rechecked."
-        />
-      )}
 
       {deployments.length ? (
         <ul className="grid gap-3 lg:grid-cols-2">

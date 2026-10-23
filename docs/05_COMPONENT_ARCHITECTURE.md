@@ -347,8 +347,11 @@ export default async function ProjectsPage({ searchParams }) {
 
 ## 8. V3 workspace interactions
 
-- `CompactFilters` consolidates page-specific filters into a single control and displays
+- `CompactFilters` consolidates page-specific filters on entity pages and displays
   applied values as removable chips; filter state is URL-backed.
+- The task board uses `TaskBoardFilters`: a basic field/value panel with checkboxes,
+  removable chips, and an `Add field` menu. Selections update the URL and server-filtered
+  results immediately. There are no Advanced or JQL modes.
 - `TaskBoard` provides the shared, horizontally scrollable workflow board, collapsible
   status columns, named assignees, labels/flags, drag-and-drop where supported, and a
   tabular list mode. Workflow definitions and required fields are managed with the visual

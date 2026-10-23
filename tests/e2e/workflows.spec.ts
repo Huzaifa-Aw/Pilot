@@ -39,9 +39,13 @@ test("projects, worklogs, approvals, allocations, deployments, and assets work e
   const week = new Date();
   week.setUTCDate(week.getUTCDate() - ((week.getUTCDay() + 6) % 7));
   const weekStartDate = week.toISOString().slice(0, 10);
+  const weekEnd = new Date(week);
+  weekEnd.setUTCDate(weekEnd.getUTCDate() + 6);
+  const weekEndDate = weekEnd.toISOString().slice(0, 10);
   const planned = await api(page, `/api/projects/${sharedProject.id}/allocations`, "POST", {
     memberId: engineer.id,
-    weekStartDate,
+    startDate: weekStartDate,
+    endDate: weekEndDate,
     plannedHrs: 28,
     allocationPct: 70,
     mode: "Remote",
@@ -56,7 +60,8 @@ test("projects, worklogs, approvals, allocations, deployments, and assets work e
   await expect(page.getByText("Change here")).toBeVisible();
   const overAllocated = await api(page, `/api/projects/${secondProject.id}/allocations`, "POST", {
     memberId: engineer.id,
-    weekStartDate,
+    startDate: weekStartDate,
+    endDate: weekEndDate,
     plannedHrs: 16,
     allocationPct: 40,
     mode: "Remote",
@@ -138,9 +143,9 @@ test("projects, worklogs, approvals, allocations, deployments, and assets work e
   expect((await api(page, `/api/assets?status=IN_USE&memberId=${engineer.id}&projectId=${sharedProject.id}`)).data.data.some((item: { id: string }) => item.id === asset.data.data.id)).toBe(true);
   expect((await api(page, `/api/assets/${asset.data.data.id}/checkout`, "POST", { action: "return" })).status).toBe(200);
 
-  const csv = await api(page, "/api/assets/import", "POST", { csv: "assetCode,title,category,status\nE2E-CSV,\"CSV tool, set\",Tools,ACTIVE" });
-  expect(csv.status).toBe(201);
-  expect(csv.data.data).toHaveLength(1);
+  const csv = await api(page, "/api/assets/import", "POST", { csv: "assetCode,title,category,status\nE2E-CSV,\"CSV tool, set\",Tools,ACTIVE", mode: "commit" });
+  expect(csv.status).toBe(200);
+  expect(csv.data.data.created).toBe(1);
   expect((await page.goto("/reports"))?.status()).toBe(200);
   await expect(page.getByRole("heading", { name: "Portfolio timeline" })).toBeVisible();
 
