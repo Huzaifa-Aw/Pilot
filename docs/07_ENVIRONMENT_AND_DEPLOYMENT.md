@@ -42,6 +42,25 @@ additional accounts join through invitations.
 Useful checks are `npm run typecheck`, `npm run lint`, `npm test`, `npm run db:validate`,
 `npm run build`, and `npm run test:e2e` (requires Playwright Chromium).
 
+## Sample data for a workspace walkthrough
+
+To populate an already bootstrapped Supabase workspace with additive sample records, ensure
+`.env` targets Supabase and run:
+
+```bash
+SEED_DEMO_CONFIRM_SUPABASE=YES npm run db:seed-demo
+```
+
+The seeder refuses non-Supabase database hosts, does not create accounts or change
+existing project/member records, and is safe to rerun. It adds sample projects, milestones,
+tasks/workflows/labels, allocations, worklogs/timesheet periods, a deployment, assets,
+metadata templates, profile skills/certification, a notification, and audit events.
+Preview the transaction without keeping any writes with:
+
+```bash
+SEED_DEMO_CONFIRM_SUPABASE=YES SEED_DEMO_DRY_RUN=YES npm run db:seed-demo
+```
+
 ## Managed hosting
 
 Deploy the Next.js application to a managed Next.js host and use a managed PostgreSQL
