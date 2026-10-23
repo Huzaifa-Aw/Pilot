@@ -49,7 +49,8 @@ database. Configure the required environment variables in the host's production 
 use a pooled URL for `DATABASE_URL` only when supported by the Prisma runtime and a direct
 URL for `DIRECT_URL`.
 
-Build with `npm run db:generate && npm run build`. Run `npm run db:deploy` once as a
+Build with `npm run build`; its `prebuild` lifecycle generates the Prisma Client from the
+checked-in schema before Next.js compiles. Run `npm run db:deploy` once as a
 release step against the production database, after taking a backup and before directing
 traffic to code that requires the migration. Do not run migrations separately for each
 preview deployment. Configure the host's edge firewall to rate-limit
@@ -57,7 +58,9 @@ preview deployment. Configure the host's edge firewall to rate-limit
 apply to a managed deployment.
 
 For Vercel, import the repository as a Next.js project, set the required production
-environment variables, and use `npm run db:generate && npm run build` as the build command.
+environment variables, and use `npm run build` as the build command. The package's
+`prebuild` lifecycle runs `npm run db:generate` so the generated client matches the
+checked-in Prisma schema.
 Run migrations from a protected release job with production database credentials, not as a
 preview-build step. Use Vercel Firewall or another trusted edge layer for the rate limits.
 
