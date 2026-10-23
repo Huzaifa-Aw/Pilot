@@ -249,6 +249,20 @@ src/lib/
 └── constants.ts                    # STATUS_MAP, ROLE_HIERARCHY, WORKFLOW_STATES
 ```
 
+### Implemented V3 additions
+
+- `src/app/(dashboard)/settings/workflows/page.tsx` and
+  `src/components/forms/task-workflow-settings.tsx`: visual workflow/status configuration.
+- `src/components/data-display/compact-filters.tsx`,
+  `src/components/data-display/task-board.tsx`, and
+  `src/components/data-display/task-label-badge.tsx`: shared compact filters, the
+  horizontal board/list view, and task labels.
+- `src/components/forms/csv-import-panel.tsx`: shared template download, preview, and
+  confirm interface. Import handlers are colocated under
+  `src/app/api/{assets,projects,members,tasks,deployments,allocations,worklogs}/import/`.
+- `src/lib/{allocation-planning,audit,csv,csv-templates,filter-params,metadata-csv,task-filters,task-workflows}.ts`:
+  shared helpers for the corresponding workflows.
+
 ---
 
 ## `/src/types/` — TypeScript Definitions

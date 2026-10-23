@@ -104,7 +104,7 @@ export default async function MemberProfilePage({
   }
 
   return (
-    <div className="mx-auto max-w-4xl space-y-6">
+    <div className="mx-auto max-w-6xl space-y-6">
       <BackLink href="/members" label="People" currentPage="Member profile" />
       <header className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div className="flex min-w-0 items-start gap-3">
@@ -128,28 +128,13 @@ export default async function MemberProfilePage({
         </div>
       </header>
 
-      <MetadataValuesDisplay
-        fields={metadataFields}
-        values={metadataValuesForFields(metadataFields, member.metadata ?? {})}
-        unconfigured={unconfiguredMetadataValues(metadataFields, member.metadata ?? {})}
-      />
-
-      <section aria-label="Member utilization and timesheet" className="grid gap-3 sm:grid-cols-2">
-        <div className="rounded-lg border border-border-default bg-surface p-4 sm:p-5">
-          <div className="flex items-center justify-between gap-3"><h2 className="text-sm font-semibold text-text-primary">Weekly utilization</h2><span className="text-sm tabular-nums text-text-secondary">{allocatedHours.toFixed(1)} / {member.capacityHrsPerWeek}h</span></div>
-          <progress aria-label="Weekly planned hours" className={`mt-3 h-2 w-full ${allocatedHours > member.capacityHrsPerWeek ? "accent-error" : "accent-brand-primary"}`} max={member.capacityHrsPerWeek || 1} value={Math.min(allocatedHours, member.capacityHrsPerWeek || 1)} />
-          <div className="mt-3 flex h-10 items-end gap-1" aria-label="12-week allocation trend">
-            {[...trend.entries()].slice(-12).map(([week, hours]) => <span key={week} title={`${week}: ${hours} hours`} className={`min-w-1 flex-1 rounded-t ${hours > member.capacityHrsPerWeek ? "bg-error-dark" : "bg-brand-primary"}`} style={{ height: `${Math.max(8, Math.min(100, hours / Math.max(member.capacityHrsPerWeek, 1) * 100))}%` }} />)}
-          </div>
-          <p className="mt-1 text-xs text-text-muted">Planned allocation over the last 12 weeks</p>
-        </div>
-        <div className="rounded-lg border border-border-default bg-surface p-4 sm:p-5">
-          <div className="flex items-center justify-between gap-3"><h2 className="text-sm font-semibold text-text-primary">This month</h2><span className="text-xs text-text-muted">{new Intl.DateTimeFormat("en", { month: "long", year: "numeric", timeZone: "UTC" }).format(monthStart)}</span></div>
-          <p className="mt-3 text-2xl font-semibold tabular-nums text-text-primary">{loggedHours.toFixed(1)}<span className="text-sm font-medium text-text-muted"> / {expectedHours.toFixed(1)}h</span></p>
-          <p className="mt-1 text-sm text-text-secondary">{Math.max(0, expectedHours - loggedHours).toFixed(1)} hours remaining · {monthWorklogs.length} entries</p>
-          <Link href="/timesheets?tab=mine" className="mt-3 inline-flex min-h-11 items-center text-sm font-semibold text-brand-primary hover:underline">Open timesheet <ArrowRight className="ml-1" size={14} aria-hidden="true" /></Link>
-        </div>
-      </section>
+      <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_17rem]">
+        <div className="order-2 min-w-0 space-y-6 lg:order-1">
+          <MetadataValuesDisplay
+            fields={metadataFields}
+            values={metadataValuesForFields(metadataFields, member.metadata ?? {})}
+            unconfigured={unconfiguredMetadataValues(metadataFields, member.metadata ?? {})}
+          />
 
       {member.certifications.length > 0 && (
         <section aria-labelledby="certifications-title" className="space-y-3">
@@ -214,6 +199,30 @@ export default async function MemberProfilePage({
           </p>
         )}
       </section>
+        </div>
+        <aside aria-label="Member metrics" className="order-1 grid gap-3 sm:grid-cols-2 lg:sticky lg:top-4 lg:order-2 lg:grid-cols-1">
+          <section aria-label="Weekly utilization" className="rounded-lg border border-border-default bg-surface p-3">
+            <div className="flex items-center justify-between gap-2">
+              <h2 className="text-xs font-semibold text-text-primary">Weekly utilization</h2>
+              <span className="text-xs tabular-nums text-text-secondary">{allocatedHours.toFixed(1)} / {member.capacityHrsPerWeek}h</span>
+            </div>
+            <progress aria-label="Weekly planned hours" className={`mt-2 h-1.5 w-full ${allocatedHours > member.capacityHrsPerWeek ? "accent-error" : "accent-brand-primary"}`} max={member.capacityHrsPerWeek || 1} value={Math.min(allocatedHours, member.capacityHrsPerWeek || 1)} />
+            <div className="mt-2 flex h-7 items-end gap-1" aria-label="12-week allocation trend">
+              {[...trend.entries()].slice(-12).map(([week, hours]) => <span key={week} title={`${week}: ${hours} hours`} className={`min-w-1 flex-1 rounded-t ${hours > member.capacityHrsPerWeek ? "bg-error-dark" : "bg-brand-primary"}`} style={{ height: `${Math.max(8, Math.min(100, hours / Math.max(member.capacityHrsPerWeek, 1) * 100))}%` }} />)}
+            </div>
+            <p className="mt-1 text-[11px] text-text-muted">Planned hours across the last 12 weeks</p>
+          </section>
+          <section aria-label="Monthly timesheet summary" className="rounded-lg border border-border-default bg-surface p-3">
+            <div className="flex items-center justify-between gap-2">
+              <h2 className="text-xs font-semibold text-text-primary">This month</h2>
+              <span className="text-[11px] text-text-muted">{new Intl.DateTimeFormat("en", { month: "short", year: "numeric", timeZone: "UTC" }).format(monthStart)}</span>
+            </div>
+            <p className="mt-2 text-xl font-semibold tabular-nums text-text-primary">{loggedHours.toFixed(1)}<span className="text-xs font-medium text-text-muted"> / {expectedHours.toFixed(1)}h</span></p>
+            <p className="mt-1 text-xs text-text-secondary">{Math.max(0, expectedHours - loggedHours).toFixed(1)}h remaining · {monthWorklogs.length} entries</p>
+            <Link href="/timesheets?tab=mine" className="mt-2 inline-flex min-h-9 items-center text-xs font-semibold text-brand-primary hover:underline">Open timesheet <ArrowRight className="ml-1" size={13} aria-hidden="true" /></Link>
+          </section>
+        </aside>
+      </div>
     </div>
   );
 }

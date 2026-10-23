@@ -1,10 +1,11 @@
 import { AuditAction, DeploymentStatus, Prisma } from "@prisma/client";
 import { NextRequest, NextResponse } from "next/server";
 import { createAuditEvent } from "@/lib/audit";
-import { requireTenantRole } from "@/lib/api";
+import { auditUserFailureResponse, requireTenantRole } from "@/lib/api";
 import { getDeploymentConflicts, tagConflictsByMember } from "@/lib/deployment-conflicts";
 import { db } from "@/lib/db";
 import { can } from "@/lib/permissions";
+import { prepareMetadataValues } from "@/lib/metadata";
 import { deploymentUpdateSchema } from "@/lib/validations/deployment";
 
 type RouteContext = { params: Promise<{ deploymentId: string }> };
@@ -37,24 +38,26 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
   const { context, response } = await requireTenantRole("MANAGER");
   if (response) return response;
   const { deploymentId } = await params;
+  const fail = (statusCode: number, error: string, code: string) => auditUserFailureResponse({
+    request, context, action: AuditAction.UPDATE, entityType: "deployment", entityId: deploymentId, status: statusCode, error, code,
+  });
   let body: unknown;
   try {
     body = await request.json();
   } catch (error) {
     if (error instanceof SyntaxError) {
-      return NextResponse.json({ error: "Request body must be valid JSON.", code: "VALIDATION_ERROR" }, { status: 400 });
+      return fail(400, "Request body must be valid JSON.", "VALIDATION_ERROR");
     }
     throw error;
   }
   const parsed = deploymentUpdateSchema.safeParse(body);
   if (!parsed.success) {
-    return NextResponse.json(
-      { error: "Check the deployment details.", code: "VALIDATION_ERROR", details: parsed.error.flatten().fieldErrors },
-      { status: 422 },
-    );
+    return fail(422, "Check the deployment details.", "VALIDATION_ERROR");
   }
 
-  const result = await db.$transaction(async (tx) => {
+  let result;
+  try {
+  result = await db.$transaction(async (tx) => {
     const before = await tx.deployment.findFirst({
       where: { id: deploymentId, organizationId: context.organizationId },
       include: { members: { where: { organizationId: context.organizationId }, select: { memberId: true } } },
@@ -86,6 +89,16 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
       });
       if (!project) return { kind: "project" as const };
     }
+    const preparedMetadata = parsed.data.metadata === undefined
+      ? null
+      : await prepareMetadataValues(
+          context.organizationId,
+          "deployment",
+          parsed.data.metadata ?? {},
+          before.metadata,
+          tx,
+        );
+    if (preparedMetadata?.error) return { kind: "metadata" as const, error: preparedMetadata.error };
 
     const startDate = parsed.data.startDate ?? before.startDate;
     const endDate = parsed.data.endDate ?? before.endDate;
@@ -105,7 +118,7 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
     const {
       memberId: submittedMemberId,
       memberIds: submittedMemberIds,
-      metadata,
+      metadata: submittedMetadata,
       ...fields
     } = parsed.data;
     void submittedMemberId;
@@ -115,9 +128,7 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
       data: {
         ...fields,
         memberId: memberIds[0],
-        ...(metadata !== undefined ? {
-          metadata: metadata === null ? Prisma.JsonNull : metadata as Prisma.InputJsonValue,
-        } : {}),
+        ...(submittedMetadata !== undefined && preparedMetadata ? { metadata: preparedMetadata.values } : {}),
         conflictFlags: conflicts as Prisma.InputJsonValue,
       },
     });
@@ -169,21 +180,27 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
     }, tx);
     return { kind: "updated" as const, data: updated };
   });
+  } catch (error) {
+    throw error;
+  }
 
   if (!result) {
-    return NextResponse.json({ error: "Deployment not found.", code: "NOT_FOUND" }, { status: 404 });
+    return fail(404, "Deployment not found.", "NOT_FOUND");
   }
   if (result.kind === "forbidden") {
-    return NextResponse.json({ error: "Join this project before changing its deployments.", code: "FORBIDDEN" }, { status: 403 });
+    return fail(403, "Join this project before changing its deployments.", "FORBIDDEN");
   }
   if (result.kind === "member") {
-    return NextResponse.json({ error: "Select active members in this organization.", code: "VALIDATION_ERROR" }, { status: 422 });
+    return fail(422, "Select active members in this organization.", "VALIDATION_ERROR");
   }
   if (result.kind === "project") {
-    return NextResponse.json({ error: "Select a project in this organization.", code: "VALIDATION_ERROR" }, { status: 422 });
+    return fail(422, "Select a project in this organization.", "VALIDATION_ERROR");
   }
   if (result.kind === "dates") {
-    return NextResponse.json({ error: "End date must be on or after the start date.", code: "VALIDATION_ERROR" }, { status: 422 });
+    return fail(422, "End date must be on or after the start date.", "VALIDATION_ERROR");
+  }
+  if (result.kind === "metadata") {
+    return fail(422, result.error, "VALIDATION_ERROR");
   }
   return NextResponse.json({ data: result.data });
 }

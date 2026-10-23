@@ -12,6 +12,7 @@ const projectFields = z.object({
   title: z.string().trim().min(2).max(160),
   description: z.string().trim().max(10000).optional(),
   status: z.enum(PROJECT_STATUSES).optional(),
+  workflowId: z.string().uuid().optional(),
   startDate: dateInputSchema.optional(),
   endDate: dateInputSchema.optional(),
   budgetHours: hoursField,

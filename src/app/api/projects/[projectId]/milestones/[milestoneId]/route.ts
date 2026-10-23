@@ -1,7 +1,7 @@
 import { AuditAction, MilestoneStatus, Prisma } from "@prisma/client";
 import { NextRequest, NextResponse } from "next/server";
 import { createAuditEvent } from "@/lib/audit";
-import { isTransactionConflict, requireTenantRole } from "@/lib/api";
+import { auditUserFailureResponse, isTransactionConflict, requireTenantRole } from "@/lib/api";
 import { db } from "@/lib/db";
 import { prepareMetadataValues } from "@/lib/metadata";
 import { can } from "@/lib/permissions";
@@ -47,25 +47,25 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
   const { context, response } = await requireTenantRole("MANAGER");
   if (response) return response;
   const { projectId, milestoneId } = await params;
+  const fail = (status: number, error: string, code: string) => auditUserFailureResponse({
+    request, context, action: AuditAction.UPDATE, entityType: "milestone", entityId: milestoneId, status, error, code,
+  });
 
   let body: unknown;
   try {
     body = await request.json();
   } catch (error) {
     if (error instanceof SyntaxError) {
-      return NextResponse.json({ error: "Request body must be valid JSON.", code: "VALIDATION_ERROR" }, { status: 400 });
+      return fail(400, "Request body must be valid JSON.", "VALIDATION_ERROR");
     }
     throw error;
   }
   const parsed = milestoneUpdateSchema.safeParse(body);
   if (!parsed.success) {
-    return NextResponse.json(
-      { error: "Check the milestone details.", code: "VALIDATION_ERROR", details: parsed.error.flatten().fieldErrors },
-      { status: 422 },
-    );
+    return fail(422, "Check the milestone details.", "VALIDATION_ERROR");
   }
   if (!(await can(context, "milestone.update", { projectId }))) {
-    return NextResponse.json({ error: "Join this project as a manager before changing milestones.", code: "FORBIDDEN" }, { status: 403 });
+    return fail(403, "Join this project as a manager before changing milestones.", "FORBIDDEN");
   }
   let result;
   try {
@@ -175,39 +175,39 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
     }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
   } catch (error) {
     if (isTransactionConflict(error)) {
-      return NextResponse.json({ error: "Milestone order changed concurrently. Refresh and try again.", code: "CONFLICT" }, { status: 409 });
+      return fail(409, "Milestone order changed concurrently. Refresh and try again.", "CONFLICT");
     }
     throw error;
   }
 
   if (result.kind === "missing") {
-    return NextResponse.json({ error: "Milestone not found.", code: "NOT_FOUND" }, { status: 404 });
+    return fail(404, "Milestone not found.", "NOT_FOUND");
   }
   if (result.kind === "conflict") {
-    return NextResponse.json({ error: "This milestone changed since you opened it. Refresh and try again.", code: "CONFLICT" }, { status: 409 });
+    return fail(409, "This milestone changed since you opened it. Refresh and try again.", "CONFLICT");
   }
   if (result.kind === "signoff") {
-    return NextResponse.json(
-      { error: "Select an organization member to sign off before approving or completing this milestone.", code: "SIGNOFF_REQUIRED" },
-      { status: 422 },
-    );
+    return fail(422, "Select an organization member to sign off before approving or completing this milestone.", "SIGNOFF_REQUIRED");
   }
   if (result.kind === "signer") {
-    return NextResponse.json({ error: "The selected signoff member is not active in this organization.", code: "VALIDATION_ERROR" }, { status: 422 });
+    return fail(422, "The selected signoff member is not active in this organization.", "VALIDATION_ERROR");
   }
   if (result.kind === "metadata") {
-    return NextResponse.json({ error: result.message, code: "VALIDATION_ERROR", field: "metadata" }, { status: 422 });
+    return fail(422, result.message, "VALIDATION_ERROR");
   }
 
   return NextResponse.json({ data: result.data });
 }
 
-export async function DELETE(_request: NextRequest, { params }: RouteContext) {
+export async function DELETE(request: NextRequest, { params }: RouteContext) {
   const { context, response } = await requireTenantRole("MANAGER");
   if (response) return response;
   const { projectId, milestoneId } = await params;
+  const fail = (status: number, error: string, code: string) => auditUserFailureResponse({
+    request, context, action: AuditAction.DELETE, entityType: "milestone", entityId: milestoneId, status, error, code,
+  });
   if (!(await can(context, "milestone.update", { projectId }))) {
-    return NextResponse.json({ error: "Join this project as a manager before changing milestones.", code: "FORBIDDEN" }, { status: 403 });
+    return fail(403, "Join this project as a manager before changing milestones.", "FORBIDDEN");
   }
 
   const result = await db.$transaction(async (tx) => {
@@ -232,10 +232,10 @@ export async function DELETE(_request: NextRequest, { params }: RouteContext) {
     return { kind: "deleted" as const };
   });
   if (result.kind === "missing") {
-    return NextResponse.json({ error: "Milestone not found.", code: "NOT_FOUND" }, { status: 404 });
+    return fail(404, "Milestone not found.", "NOT_FOUND");
   }
   if (result.kind === "has-tasks") {
-    return NextResponse.json({ error: "Move or remove its tasks before deleting this milestone.", code: "HAS_TASKS" }, { status: 409 });
+    return fail(409, "Move or remove its tasks before deleting this milestone.", "HAS_TASKS");
   }
   return NextResponse.json({ data: { id: milestoneId } });
 }

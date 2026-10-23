@@ -1,12 +1,13 @@
 import { AuditAction, Prisma, ProjectStatus } from "@prisma/client";
 import { NextRequest, NextResponse } from "next/server";
 import { createAuditEvent } from "@/lib/audit";
-import { requireTenantRole, isUniqueViolation } from "@/lib/api";
+import { auditUserFailureResponse, isUniqueViolation, requireTenantRole } from "@/lib/api";
 import { db } from "@/lib/db";
 import { prepareMetadataValues } from "@/lib/metadata";
 import { roleAtLeast } from "@/lib/rbac";
 import { parsePage } from "@/lib/validations/shared";
 import { projectCreateSchema } from "@/lib/validations/project";
+import { createDefaultTaskWorkflow } from "@/lib/task-workflows";
 
 function isProjectStatus(value: string): value is ProjectStatus {
   return Object.values(ProjectStatus).some((status) => status === value);
@@ -58,36 +59,44 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   const { context, response } = await requireTenantRole("MANAGER");
   if (response) return response;
+  const fail = (status: number, error: string, code: string) => auditUserFailureResponse({
+    request, context, action: AuditAction.CREATE, entityType: "project", status, error, code,
+  });
 
   let body: unknown;
   try {
     body = await request.json();
   } catch (error) {
     if (error instanceof SyntaxError) {
-      return NextResponse.json({ error: "Request body must be valid JSON.", code: "VALIDATION_ERROR" }, { status: 400 });
+      return fail(400, "Request body must be valid JSON.", "VALIDATION_ERROR");
     }
     throw error;
   }
 
   const parsed = projectCreateSchema.safeParse(body);
   if (!parsed.success) {
-    return NextResponse.json(
-      { error: "Check the project details.", code: "VALIDATION_ERROR", details: parsed.error.flatten().fieldErrors },
-      { status: 422 },
-    );
+    return fail(422, "Check the project details.", "VALIDATION_ERROR");
   }
   const validation = await prepareMetadataValues(context.organizationId, "project", parsed.data.metadata ?? {});
   if (!validation.values) {
-    return NextResponse.json({ error: validation.error ?? "Custom values are invalid.", code: "VALIDATION_ERROR", field: "metadata" }, { status: 422 });
+    return fail(422, validation.error ?? "Custom values are invalid.", "VALIDATION_ERROR");
   }
   const metadataValues: Prisma.InputJsonObject = validation.values;
 
   try {
-    const project = await db.$transaction(async (tx) => {
+    const result = await db.$transaction(async (tx) => {
+      const workflow = parsed.data.workflowId
+        ? await tx.taskWorkflow.findFirst({
+            where: { id: parsed.data.workflowId, organizationId: context.organizationId },
+            select: { id: true },
+          })
+        : await createDefaultTaskWorkflow(tx, context.organizationId);
+      if (!workflow) return { kind: "workflow" as const };
       const created = await tx.project.create({
         data: {
           ...parsed.data,
           code: parsed.data.code.toUpperCase(),
+          workflowId: workflow.id,
           metadata: metadataValues,
           organizationId: context.organizationId,
         },
@@ -95,7 +104,7 @@ export async function POST(request: NextRequest) {
       await tx.projectMember.create({
         data: {
           organizationId: context.organizationId,
-          projectId: project.id,
+          projectId: created.id,
           memberId: context.memberId,
           role: "LEAD",
         },
@@ -115,13 +124,16 @@ export async function POST(request: NextRequest) {
         },
         userAgent: request.headers.get("user-agent"),
       }, tx);
-      return created;
+      return { kind: "created" as const, data: created };
     });
 
-    return NextResponse.json({ data: project }, { status: 201 });
+    if (result.kind === "workflow") {
+      return fail(422, "Choose a workflow in this organization.", "VALIDATION_ERROR");
+    }
+    return NextResponse.json({ data: result.data }, { status: 201 });
   } catch (error) {
     if (isUniqueViolation(error)) {
-      return NextResponse.json({ error: "A project with that code already exists.", code: "CONFLICT" }, { status: 409 });
+      return fail(409, "A project with that code already exists.", "CONFLICT");
     }
     throw error;
   }

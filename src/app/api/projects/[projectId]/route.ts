@@ -1,7 +1,7 @@
 import { AuditAction, Prisma, ProjectStatus } from "@prisma/client";
 import { NextRequest, NextResponse } from "next/server";
 import { createAuditEvent } from "@/lib/audit";
-import { isUniqueViolation, requireTenantRole } from "@/lib/api";
+import { auditUserFailureResponse, isUniqueViolation, requireTenantRole } from "@/lib/api";
 import { db } from "@/lib/db";
 import { prepareMetadataValues } from "@/lib/metadata";
 import { can } from "@/lib/permissions";
@@ -72,8 +72,11 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
   const { context, response } = await requireTenantRole("MANAGER");
   if (response) return response;
   const { projectId } = await params;
+  const fail = (status: number, error: string, code: string) => auditUserFailureResponse({
+    request, context, action: AuditAction.UPDATE, entityType: "project", entityId: projectId, status, error, code,
+  });
   if (!(await can(context, "project.update", { projectId }))) {
-    return NextResponse.json({ error: "Join this project before editing it.", code: "FORBIDDEN" }, { status: 403 });
+    return fail(403, "Join this project before editing it.", "FORBIDDEN");
   }
 
   let body: unknown;
@@ -81,17 +84,14 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
     body = await request.json();
   } catch (error) {
     if (error instanceof SyntaxError) {
-      return NextResponse.json({ error: "Request body must be valid JSON.", code: "VALIDATION_ERROR" }, { status: 400 });
+      return fail(400, "Request body must be valid JSON.", "VALIDATION_ERROR");
     }
     throw error;
   }
 
   const parsed = projectUpdateSchema.safeParse(body);
   if (!parsed.success) {
-    return NextResponse.json(
-      { error: "Check the project details.", code: "VALIDATION_ERROR", details: parsed.error.flatten().fieldErrors },
-      { status: 422 },
-    );
+    return fail(422, "Check the project details.", "VALIDATION_ERROR");
   }
   try {
     const updated = await db.$transaction(async (tx) => {
@@ -99,6 +99,41 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
         where: { id: projectId, organizationId: context.organizationId },
       });
       if (!before) return null;
+      if (parsed.data.workflowId && !(await tx.taskWorkflow.findFirst({
+        where: { id: parsed.data.workflowId, organizationId: context.organizationId },
+        select: { id: true },
+      }))) {
+        return { kind: "workflow" as const };
+      }
+      if (parsed.data.workflowId && parsed.data.workflowId !== before.workflowId) {
+        const currentTasks = await tx.task.findMany({
+          where: { projectId, organizationId: context.organizationId },
+          select: { id: true, status: true, workflowStatusId: true },
+        });
+        const nextWorkflowStatuses = await tx.taskWorkflowStatus.findMany({
+          where: { workflowId: parsed.data.workflowId, organizationId: context.organizationId, isActive: true },
+          select: { id: true, category: true },
+          orderBy: { sortOrder: "asc" },
+        });
+        for (const task of currentTasks) {
+          const targetStatus = nextWorkflowStatuses.find(({ category }) => category === task.status);
+          if (!targetStatus) return { kind: "workflow-tasks" as const };
+          await tx.task.updateMany({
+            where: { id: task.id, organizationId: context.organizationId },
+            data: { workflowStatusId: targetStatus.id },
+          });
+          await createAuditEvent({
+            organizationId: context.organizationId,
+            actorId: context.userId,
+            action: AuditAction.UPDATE,
+            entityType: "task",
+            entityId: task.id,
+            before: { workflowStatusId: task.workflowStatusId, status: task.status },
+            after: { workflowStatusId: targetStatus.id, status: task.status },
+            userAgent: request.headers.get("user-agent"),
+          }, tx);
+        }
+      }
 
       const metadataResult = parsed.data.metadata !== undefined
         ? await prepareMetadataValues(context.organizationId, "project", parsed.data.metadata, before.metadata, tx)
@@ -128,15 +163,21 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
     });
 
     if (!updated) {
-      return NextResponse.json({ error: "Project not found.", code: "NOT_FOUND" }, { status: 404 });
+      return fail(404, "Project not found.", "NOT_FOUND");
     }
     if (updated.kind === "metadata") {
-      return NextResponse.json({ error: updated.message, code: "VALIDATION_ERROR", field: "metadata" }, { status: 422 });
+      return fail(422, updated.message, "VALIDATION_ERROR");
+    }
+    if (updated.kind === "workflow") {
+      return fail(422, "Choose a workflow in this organization.", "VALIDATION_ERROR");
+    }
+    if (updated.kind === "workflow-tasks") {
+      return fail(422, "Move the project's tasks to statuses supported by the selected workflow before switching.", "WORKFLOW_STATUS_CONFLICT");
     }
     return NextResponse.json({ data: updated.data });
   } catch (error) {
     if (isUniqueViolation(error)) {
-      return NextResponse.json({ error: "A project with that code already exists.", code: "CONFLICT" }, { status: 409 });
+      return fail(409, "A project with that code already exists.", "CONFLICT");
     }
     throw error;
   }

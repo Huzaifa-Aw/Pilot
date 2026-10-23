@@ -9,6 +9,7 @@ import { z } from "zod";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { allocationCreateSchema, allocationUpdateSchema } from "@/lib/validations/allocation";
+import { percentageFromPlannedHours, plannedHoursFromPercentage } from "@/lib/allocation-planning";
 
 type MemberOption = { id: string; name: string; capacityHrsPerWeek: number };
 type CreateInput = z.input<typeof allocationCreateSchema>;
@@ -19,14 +20,17 @@ type UpdateValues = z.output<typeof allocationUpdateSchema>;
 export function AllocationCreateForm({
   projectId,
   members,
-  weekStartDate,
+  startDate,
+  endDate,
 }: {
   projectId: string;
   members: MemberOption[];
-  weekStartDate: string;
+  startDate: string;
+  endDate: string;
 }) {
   const router = useRouter();
   const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
   const {
     control,
     register,
@@ -38,7 +42,8 @@ export function AllocationCreateForm({
     resolver: zodResolver(allocationCreateSchema),
     defaultValues: {
       memberId: members[0]?.id ?? "",
-      weekStartDate,
+      startDate,
+      endDate,
       plannedHrs: 0,
       allocationPct: 0,
       mode: "Remote",
@@ -48,9 +53,21 @@ export function AllocationCreateForm({
   const selectedMemberId = useWatch({ control, name: "memberId" });
   const selectedMember = members.find((member) => member.id === selectedMemberId);
   const percentage = useWatch({ control, name: "allocationPct" }) ?? 0;
+  const plannedHours = useWatch({ control, name: "plannedHrs" }) ?? 0;
+
+  function updateHoursFromPercentage(value: number, capacity: number) {
+    setValue("allocationPct", value, { shouldValidate: true, shouldDirty: true });
+    setValue("plannedHrs", plannedHoursFromPercentage(value, capacity), { shouldValidate: true, shouldDirty: true });
+  }
+
+  function updatePercentageFromHours(value: number, capacity: number) {
+    setValue("plannedHrs", value, { shouldValidate: true, shouldDirty: true });
+    setValue("allocationPct", percentageFromPlannedHours(value, capacity), { shouldValidate: true, shouldDirty: true });
+  }
 
   async function submit(values: CreateValues) {
     setError("");
+    setSuccess("");
     try {
       const response = await fetch(`/api/projects/${projectId}/allocations`, {
         method: "POST",
@@ -62,7 +79,8 @@ export function AllocationCreateForm({
         setError(result.error ?? "Allocation couldn't be saved.");
         return;
       }
-      reset({ memberId: values.memberId, weekStartDate, plannedHrs: 0, allocationPct: 0, mode: "Remote", notes: "" });
+      reset({ memberId: values.memberId, startDate, endDate, plannedHrs: 0, allocationPct: 0, mode: "Remote", notes: "" });
+      setSuccess(`${result.data.length} weekly allocation${result.data.length === 1 ? "" : "s"} scheduled.`);
       router.refresh();
     } catch {
       setError("We couldn't reach the server. Check your connection and try again.");
@@ -78,7 +96,7 @@ export function AllocationCreateForm({
           {...register("memberId", {
             onChange: (event) => {
               const member = members.find((item) => item.id === event.target.value);
-              setValue("plannedHrs", member ? member.capacityHrsPerWeek * (percentage || 0) / 100 : 0, { shouldValidate: true });
+              updateHoursFromPercentage(percentage, member?.capacityHrsPerWeek ?? 0);
             },
           })}
         >
@@ -87,32 +105,33 @@ export function AllocationCreateForm({
         {errors.memberId && <span className="block text-xs text-error-dark">{errors.memberId.message}</span>}
       </label>
       <label className="space-y-1.5">
-        <span className="text-sm font-medium text-text-secondary">Week starts</span>
-        <Input type="date" {...register("weekStartDate")} />
-        {errors.weekStartDate && <span className="block text-xs text-error-dark">{errors.weekStartDate.message}</span>}
+        <span className="text-sm font-medium text-text-secondary">Allocation starts</span>
+        <Input type="date" {...register("startDate")} />
+        {errors.startDate && <span className="block text-xs text-error-dark">{errors.startDate.message}</span>}
       </label>
+      <label className="space-y-1.5">
+        <span className="text-sm font-medium text-text-secondary">Allocation ends</span>
+        <Input type="date" {...register("endDate")} />
+        {errors.endDate && <span className="block text-xs text-error-dark">{errors.endDate.message}</span>}
+      </label>
+      <p className="text-xs leading-5 text-text-muted sm:col-span-2 xl:col-span-5">The allocation applies to every week touched by these dates. Choose up to 12 weeks; each week is checked against the member&apos;s available capacity.</p>
       <label className="space-y-1.5">
         <span className="text-sm font-medium text-text-secondary">Allocation (%)</span>
         <Input
           type="number"
           min="0"
           max="100"
-          step="1"
+          step="0.01"
           inputMode="numeric"
-          {...register("allocationPct", {
-            valueAsNumber: true,
-            onChange: (event) => {
-              const member = members.find((item) => item.id === selectedMemberId);
-              setValue("plannedHrs", member ? member.capacityHrsPerWeek * Number(event.target.value || 0) / 100 : 0);
-            },
-          })}
+          value={percentage}
+          onChange={(event) => updateHoursFromPercentage(Number(event.target.value || 0), selectedMember?.capacityHrsPerWeek ?? 0)}
         />
         {errors.allocationPct && <span className="block text-xs text-error-dark">{errors.allocationPct.message}</span>}
       </label>
       <label className="space-y-1.5">
         <span className="text-sm font-medium text-text-secondary">Planned hours</span>
-        <Input readOnly type="number" value={selectedMember ? (selectedMember.capacityHrsPerWeek * Number(percentage || 0) / 100).toFixed(1) : "0"} aria-label="Planned hours calculated from capacity" />
-        <span className="block text-xs text-text-muted">Calculated from member capacity.</span>
+        <Input type="number" min="0" max={selectedMember?.capacityHrsPerWeek ?? 168} step="0.25" value={plannedHours} onChange={(event) => updatePercentageFromHours(Number(event.target.value || 0), selectedMember?.capacityHrsPerWeek ?? 0)} aria-label="Planned hours" />
+        <span className="block text-xs text-text-muted">Changing hours updates the percentage using this member&apos;s weekly capacity.</span>
       </label>
       <label className="space-y-1.5">
         <span className="text-sm font-medium text-text-secondary">Work mode</span>
@@ -124,6 +143,7 @@ export function AllocationCreateForm({
       </label>
       <div className="sm:col-span-2 xl:col-span-full">
         {error && <p role="alert" className="mb-3 rounded-md border border-error-light bg-error-light px-3 py-2.5 text-sm text-error-dark">{error}</p>}
+        {success && <p role="status" className="mb-3 text-sm text-success-dark">{success}</p>}
         <Button type="submit" disabled={isSubmitting || members.length === 0}>
           {isSubmitting ? <LoaderCircle className="animate-spin" aria-hidden="true" /> : <Save aria-hidden="true" />}
           {isSubmitting ? "Saving..." : "Save allocation"}
@@ -151,9 +171,12 @@ export function AllocationEditForm({
 }) {
   const router = useRouter();
   const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
   const {
+    control,
     register,
     handleSubmit,
+    setValue,
     formState: { errors, isSubmitting },
   } = useForm<UpdateInput, undefined, UpdateValues>({
     resolver: zodResolver(allocationUpdateSchema),
@@ -165,9 +188,22 @@ export function AllocationEditForm({
       notes: allocation.notes ?? "",
     },
   });
+  const plannedHours = useWatch({ control, name: "plannedHrs" }) ?? allocation.plannedHrs;
+  const percentage = useWatch({ control, name: "allocationPct" }) ?? allocation.allocationPct;
+
+  function updateHoursFromPercentage(value: number) {
+    setValue("allocationPct", value, { shouldValidate: true, shouldDirty: true });
+    setValue("plannedHrs", plannedHoursFromPercentage(value, allocation.capacityHrsPerWeek), { shouldValidate: true, shouldDirty: true });
+  }
+
+  function updatePercentageFromHours(value: number) {
+    setValue("plannedHrs", value, { shouldValidate: true, shouldDirty: true });
+    setValue("allocationPct", percentageFromPlannedHours(value, allocation.capacityHrsPerWeek), { shouldValidate: true, shouldDirty: true });
+  }
 
   async function submit(values: UpdateValues) {
     setError("");
+    setSuccess("");
     try {
       const response = await fetch(`/api/allocations/${allocation.id}`, {
         method: "PATCH",
@@ -179,8 +215,8 @@ export function AllocationEditForm({
         setError(result.error ?? "Allocation couldn't be updated.");
         return;
       }
+      setSuccess("Allocation updated.");
       router.refresh();
-      onCancel?.();
     } catch {
       setError("We couldn't reach the server. Check your connection and try again.");
     }
@@ -195,11 +231,11 @@ export function AllocationEditForm({
       </label>
       <label className="space-y-1.5">
         <span className="text-xs font-medium text-text-secondary">Allocation (%)</span>
-        <Input type="number" min="0" max="100" step="1" {...register("allocationPct", { valueAsNumber: true })} />
+        <Input type="number" min="0" max="100" step="0.01" value={percentage} onChange={(event) => updateHoursFromPercentage(Number(event.target.value || 0))} />
       </label>
       <label className="space-y-1.5">
         <span className="text-xs font-medium text-text-secondary">Planned hours</span>
-        <Input type="number" min="0" max={allocation.capacityHrsPerWeek} step="0.5" {...register("plannedHrs", { valueAsNumber: true })} />
+        <Input type="number" min="0" max={allocation.capacityHrsPerWeek} step="0.25" value={plannedHours} onChange={(event) => updatePercentageFromHours(Number(event.target.value || 0))} />
       </label>
       <label className="space-y-1.5">
         <span className="text-xs font-medium text-text-secondary">Work mode</span>
@@ -217,6 +253,7 @@ export function AllocationEditForm({
         {onCancel && <Button type="button" size="sm" variant="secondary" onClick={onCancel}>Cancel</Button>}
       </div>
       {error && <p role="alert" className="text-xs text-error-dark sm:col-span-2">{error}</p>}
+      {success && <p role="status" className="text-xs text-success-dark sm:col-span-2">{success}</p>}
     </form>
   );
 }

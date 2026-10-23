@@ -1,6 +1,7 @@
-import { MemberRole } from "@prisma/client";
-import { NextResponse } from "next/server";
-import { resolveTenantContext } from "@/lib/tenant";
+import { AuditAction, AuditFailureCategory, MemberRole } from "@prisma/client";
+import { NextRequest, NextResponse } from "next/server";
+import { createAuditFailureEvent } from "@/lib/audit";
+import { resolveTenantContext, type TenantContext } from "@/lib/tenant";
 import { roleAtLeast } from "@/lib/rbac";
 import { can, type Capability, type PermissionResource } from "@/lib/permissions";
 
@@ -62,6 +63,39 @@ export function failureResponse(
     { error, code },
     { status },
   );
+}
+
+export async function auditUserFailureResponse({
+  request,
+  context,
+  action,
+  entityType,
+  entityId,
+  status,
+  error,
+  code,
+}: {
+  request: NextRequest;
+  context: TenantContext;
+  action: AuditAction;
+  entityType: string;
+  entityId?: string;
+  status: number;
+  error: string;
+  code: string;
+}) {
+  const reference = await createAuditFailureEvent({
+    organizationId: context.organizationId,
+    actorId: context.userId,
+    action,
+    entityType,
+    entityId,
+    category: AuditFailureCategory.USER_ERROR,
+    errorCode: code,
+    summary: error,
+    userAgent: request.headers.get("user-agent"),
+  });
+  return NextResponse.json({ error, code, reference }, { status });
 }
 
 export function isUniqueViolation(error: unknown) {

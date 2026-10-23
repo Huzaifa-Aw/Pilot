@@ -1,11 +1,12 @@
 import { AuditAction, DeploymentStatus, Prisma } from "@prisma/client";
 import { NextRequest, NextResponse } from "next/server";
 import { createAuditEvent } from "@/lib/audit";
-import { requireTenantRole } from "@/lib/api";
+import { auditUserFailureResponse, requireTenantRole } from "@/lib/api";
 import { getDeploymentConflicts, tagConflictsByMember } from "@/lib/deployment-conflicts";
 import { db } from "@/lib/db";
 import { can, reportTree } from "@/lib/permissions";
 import { roleAtLeast } from "@/lib/rbac";
+import { prepareMetadataValues } from "@/lib/metadata";
 import { deploymentCreateSchema } from "@/lib/validations/deployment";
 import { idSchema } from "@/lib/validations/shared";
 
@@ -85,28 +86,30 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   const { context, response } = await requireTenantRole("MANAGER");
   if (response) return response;
+  const fail = (statusCode: number, error: string, code: string) => auditUserFailureResponse({
+    request, context, action: AuditAction.CREATE, entityType: "deployment", status: statusCode, error, code,
+  });
 
   let body: unknown;
   try {
     body = await request.json();
   } catch (error) {
     if (error instanceof SyntaxError) {
-      return NextResponse.json({ error: "Request body must be valid JSON.", code: "VALIDATION_ERROR" }, { status: 400 });
+      return fail(400, "Request body must be valid JSON.", "VALIDATION_ERROR");
     }
     throw error;
   }
   const parsed = deploymentCreateSchema.safeParse(body);
   if (!parsed.success) {
-    return NextResponse.json(
-      { error: "Check the deployment details.", code: "VALIDATION_ERROR", details: parsed.error.flatten().fieldErrors },
-      { status: 422 },
-    );
+    return fail(422, "Check the deployment details.", "VALIDATION_ERROR");
   }
   if (!(await can(context, "deployment.update", { projectId: parsed.data.projectId }))) {
-    return NextResponse.json({ error: "Join this project before scheduling a deployment.", code: "FORBIDDEN" }, { status: 403 });
+    return fail(403, "Join this project before scheduling a deployment.", "FORBIDDEN");
   }
 
-  const result = await db.$transaction(async (tx) => {
+  let result;
+  try {
+  result = await db.$transaction(async (tx) => {
     const memberIds = parsed.data.memberIds ?? (parsed.data.memberId ? [parsed.data.memberId] : []);
     const [members, project] = await Promise.all([
       tx.organizationMember.findMany({
@@ -120,6 +123,14 @@ export async function POST(request: NextRequest) {
     ]);
     if (members.length !== memberIds.length) return { kind: "member" as const };
     if (!project) return { kind: "project" as const };
+    const metadata = await prepareMetadataValues(
+      context.organizationId,
+      "deployment",
+      parsed.data.metadata ?? {},
+      undefined,
+      tx,
+    );
+    if (metadata.error) return { kind: "metadata" as const, error: metadata.error };
 
     const status = parsed.data.status ?? DeploymentStatus.UPCOMING;
     const conflictFlags = tagConflictsByMember(await Promise.all(memberIds.map(async (memberId) => ({
@@ -145,9 +156,7 @@ export async function POST(request: NextRequest) {
         endDate: parsed.data.endDate,
         checklist: parsed.data.checklist,
         notes: parsed.data.notes,
-        metadata: parsed.data.metadata === null
-          ? Prisma.JsonNull
-          : parsed.data.metadata as Prisma.InputJsonValue | undefined,
+        metadata: metadata.values,
         status,
         organizationId: context.organizationId,
         conflictFlags: conflictFlags as Prisma.InputJsonValue,
@@ -181,13 +190,19 @@ export async function POST(request: NextRequest) {
       userAgent: request.headers.get("user-agent"),
     }, tx);
     return { kind: "created" as const, data: deployment };
-  });
+    });
+  } catch (error) {
+    throw error;
+  }
 
   if (result.kind === "member") {
-    return NextResponse.json({ error: "Select an active organization member.", code: "VALIDATION_ERROR" }, { status: 422 });
+    return fail(422, "Select an active organization member.", "VALIDATION_ERROR");
   }
   if (result.kind === "project") {
-    return NextResponse.json({ error: "Select a project in this organization.", code: "VALIDATION_ERROR" }, { status: 422 });
+    return fail(422, "Select a project in this organization.", "VALIDATION_ERROR");
+  }
+  if (result.kind === "metadata") {
+    return fail(422, result.error, "VALIDATION_ERROR");
   }
   return NextResponse.json({ data: result.data }, { status: 201 });
 }

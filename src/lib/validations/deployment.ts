@@ -1,6 +1,13 @@
 import { z } from "zod";
 import { DEPLOYMENT_STATUSES } from "@/lib/constants";
 
+export const deploymentChecklistItemSchema = z.object({
+  id: z.string().uuid(),
+  label: z.string().trim().min(1).max(160),
+  complete: z.boolean(),
+});
+export const deploymentChecklistSchema = z.array(deploymentChecklistItemSchema).max(100);
+
 const deploymentFields = z.object({
   memberId: z.string().uuid().optional(),
   memberIds: z.array(z.string().uuid()).min(1).max(100).optional(),
@@ -12,11 +19,7 @@ const deploymentFields = z.object({
   startDate: z.coerce.date(),
   endDate: z.coerce.date(),
   status: z.enum(DEPLOYMENT_STATUSES).optional(),
-  checklist: z.array(z.object({
-    id: z.string().uuid(),
-    label: z.string().trim().min(1).max(160),
-    complete: z.boolean(),
-  })).max(100).optional(),
+  checklist: deploymentChecklistSchema.optional(),
   notes: z.string().trim().max(4000).nullable().optional(),
   metadata: z.record(z.string(), z.json()).nullable().optional(),
 });

@@ -9,7 +9,7 @@ import type { MetadataInputValues } from "@/types/metadata";
 
 export async function getDefaultMetadataFields(
   organizationId: string,
-  entityType: "project" | "milestone" | "member" | "asset" | "task",
+  entityType: "project" | "milestone" | "member" | "asset" | "task" | "deployment",
   client: typeof db | Prisma.TransactionClient = db,
 ) {
   const templates = await client.metadataTemplate.findMany({
@@ -80,20 +80,20 @@ export function validateMetadataAgainstFields(
 
 export async function prepareMetadataValues(
   organizationId: string,
-  entityType: "project" | "milestone" | "member" | "asset" | "task",
+  entityType: "project" | "milestone" | "member" | "asset" | "task" | "deployment",
   submitted: unknown,
   existing?: unknown,
   client: typeof db | Prisma.TransactionClient = db,
 ) {
   const parsedSubmitted = metadataValuesSchema.safeParse(submitted);
   if (!parsedSubmitted.success) {
-    return { error: "Custom values must be valid JSON data." as const };
+    return { error: "Check the custom field values." as const };
   }
   const parsedExisting = existing === undefined || existing === null
     ? { success: true as const, data: {} }
     : metadataValuesSchema.safeParse(existing);
   if (!parsedExisting.success) {
-    throw new Error(`Stored ${entityType} custom values are not valid JSON.`);
+    throw new Error(`Stored ${entityType} custom field data is invalid.`);
   }
 
   const fields = await getDefaultMetadataFields(organizationId, entityType, client);
@@ -143,7 +143,7 @@ export function metadataValuesForFields(
 ): MetadataInputValues {
   const parsedValues = metadataValuesSchema.safeParse(rawValues);
   if (!parsedValues.success) {
-    throw new Error("Stored custom values are not valid JSON.");
+    throw new Error("Stored custom field data is invalid.");
   }
   const values = parsedValues.data;
 
@@ -185,7 +185,7 @@ export function unconfiguredMetadataValues(
   rawValues: unknown,
 ) {
   const parsed = metadataValuesSchema.safeParse(rawValues);
-  if (!parsed.success) throw new Error("Stored custom values are not valid JSON.");
+  if (!parsed.success)   throw new Error("Stored custom field data is invalid.");
   const allowed = new Set(fields.map((field) => field.key));
   const fieldsByKey = new Map(fields.map((field) => [field.key, field]));
   return Object.entries(parsed.data)
@@ -205,11 +205,11 @@ export function unconfiguredMetadataValues(
 
 export async function validateMetadataValues(
   organizationId: string,
-  entityType: "project" | "milestone" | "member" | "asset" | "task",
+  entityType: "project" | "milestone" | "member" | "asset" | "task" | "deployment",
   values: unknown,
 ) {
   const parsedValues = metadataValuesSchema.safeParse(values);
-  if (!parsedValues.success) return "Custom values must be valid JSON data.";
+  if (!parsedValues.success) return "Stored custom field data is invalid.";
 
   const valuesObject = parsedValues.data;
   const fields = await getDefaultMetadataFields(organizationId, entityType);

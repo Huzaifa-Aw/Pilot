@@ -1,7 +1,7 @@
 import { AuditAction, Prisma } from "@prisma/client";
 import { NextRequest, NextResponse } from "next/server";
 import { createAuditEvent } from "@/lib/audit";
-import { isUniqueViolation, requireTenantRole } from "@/lib/api";
+import { auditUserFailureResponse, isUniqueViolation, requireTenantRole } from "@/lib/api";
 import { db } from "@/lib/db";
 import { can } from "@/lib/permissions";
 import { allocationUpdateSchema } from "@/lib/validations/allocation";
@@ -50,16 +50,13 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
     body = await request.json();
   } catch (error) {
     if (error instanceof SyntaxError) {
-      return NextResponse.json({ error: "Request body must be valid JSON.", code: "VALIDATION_ERROR" }, { status: 400 });
+      return auditUserFailureResponse({ request, context, action: AuditAction.UPDATE, entityType: "resource_allocation", entityId: allocationId, status: 400, error: "Request body must be valid JSON.", code: "VALIDATION_ERROR" });
     }
     throw error;
   }
   const parsed = allocationUpdateSchema.safeParse(body);
   if (!parsed.success) {
-    return NextResponse.json(
-      { error: "Check the allocation details.", code: "VALIDATION_ERROR", details: parsed.error.flatten().fieldErrors },
-      { status: 422 },
-    );
+    return auditUserFailureResponse({ request, context, action: AuditAction.UPDATE, entityType: "resource_allocation", entityId: allocationId, status: 422, error: "Check the allocation details.", code: "VALIDATION_ERROR" });
   }
 
   let result;
@@ -144,36 +141,30 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
     }, { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted });
   } catch (error) {
     if (isUniqueViolation(error)) {
-      return NextResponse.json({ error: "An allocation for this member, project, and week already exists.", code: "CONFLICT" }, { status: 409 });
+      return auditUserFailureResponse({ request, context, action: AuditAction.UPDATE, entityType: "resource_allocation", entityId: allocationId, status: 409, error: "An allocation for this member, project, and week already exists.", code: "CONFLICT" });
     }
     throw error;
   }
 
   if (result.kind === "missing") {
-    return NextResponse.json({ error: "Allocation not found.", code: "NOT_FOUND" }, { status: 404 });
+    return auditUserFailureResponse({ request, context, action: AuditAction.UPDATE, entityType: "resource_allocation", entityId: allocationId, status: 404, error: "Allocation not found.", code: "NOT_FOUND" });
   }
   if (result.kind === "forbidden") {
-    return NextResponse.json({ error: "You can change allocations only within your team and project scope.", code: "FORBIDDEN" }, { status: 403 });
+    return auditUserFailureResponse({ request, context, action: AuditAction.UPDATE, entityType: "resource_allocation", entityId: allocationId, status: 403, error: "You can change allocations only within your team and project scope.", code: "FORBIDDEN" });
   }
   if (result.kind === "hours") {
-    return NextResponse.json(
-      { error: `Planned hours must match the selected allocation percentage for this member's ${result.capacity}-hour week.`, code: "VALIDATION_ERROR" },
-      { status: 422 },
-    );
+    return auditUserFailureResponse({ request, context, action: AuditAction.UPDATE, entityType: "resource_allocation", entityId: allocationId, status: 422, error: `Planned hours must match the selected allocation percentage for this member's ${result.capacity}-hour week.`, code: "VALIDATION_ERROR" });
   }
   if (result.kind === "milestone") {
-    return NextResponse.json({ error: "Select a milestone in this project.", code: "VALIDATION_ERROR" }, { status: 422 });
+    return auditUserFailureResponse({ request, context, action: AuditAction.UPDATE, entityType: "resource_allocation", entityId: allocationId, status: 422, error: "Select a milestone in this project.", code: "VALIDATION_ERROR" });
   }
   if (result.kind === "overallocated") {
-    return NextResponse.json(
-      { error: `Week allocation exceeds 100% — reduce by ${(result.current + result.next - 100).toFixed(1)}%.`, code: "OVERALLOCATION" },
-      { status: 422 },
-    );
+    return auditUserFailureResponse({ request, context, action: AuditAction.UPDATE, entityType: "resource_allocation", entityId: allocationId, status: 422, error: `Week allocation exceeds 100% — reduce by ${(result.current + result.next - 100).toFixed(1)}%.`, code: "OVERALLOCATION" });
   }
   return NextResponse.json({ data: result.data });
 }
 
-export async function DELETE(_request: NextRequest, { params }: RouteContext) {
+export async function DELETE(request: NextRequest, { params }: RouteContext) {
   const { context, response } = await requireTenantRole("MANAGER");
   if (response) return response;
   const { allocationId } = await params;
@@ -200,10 +191,10 @@ export async function DELETE(_request: NextRequest, { params }: RouteContext) {
     return { id: allocationId };
   });
   if (!deleted) {
-    return NextResponse.json({ error: "Allocation not found.", code: "NOT_FOUND" }, { status: 404 });
+    return auditUserFailureResponse({ request, context, action: AuditAction.DELETE, entityType: "resource_allocation", entityId: allocationId, status: 404, error: "Allocation not found.", code: "NOT_FOUND" });
   }
   if ("kind" in deleted && deleted.kind === "forbidden") {
-    return NextResponse.json({ error: "You can change allocations only within your team and project scope.", code: "FORBIDDEN" }, { status: 403 });
+    return auditUserFailureResponse({ request, context, action: AuditAction.DELETE, entityType: "resource_allocation", entityId: allocationId, status: 403, error: "You can change allocations only within your team and project scope.", code: "FORBIDDEN" });
   }
   return NextResponse.json({ data: deleted });
 }

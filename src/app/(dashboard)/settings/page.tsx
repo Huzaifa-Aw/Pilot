@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { ArrowRight, Building2, KeyRound, ScrollText, UsersRound } from "lucide-react";
+import { ArrowRight, Building2, KeyRound, ScrollText, UsersRound, Workflow } from "lucide-react";
 import { db } from "@/lib/db";
 import { roleAtLeast } from "@/lib/rbac";
 import { resolveTenantContext } from "@/lib/tenant";
@@ -27,6 +27,7 @@ export default async function SettingsPage() {
     { href: "/settings/general", icon: Building2, title: "Organization profile", description: "Name, URL, branding, time zone, and locale." },
     { href: "/settings/members", icon: UsersRound, title: "Member access", description: "Invitations, membership roles, and account access." },
     { href: "/settings/metadata-templates", icon: KeyRound, title: "Custom fields", description: "Organization-defined fields for projects, milestones, members, and assets." },
+    { href: "/settings/workflows", icon: Workflow, title: "Workflows and labels", description: "Configure task statuses, transitions, required fields, and reusable labels." },
     { href: "/audit-log", icon: ScrollText, title: "Audit history", description: "Review recorded activity in this organization." },
   ];
 

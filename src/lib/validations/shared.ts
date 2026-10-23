@@ -31,7 +31,7 @@ function isJsonInputValue(value: unknown): value is Prisma.InputJsonValue | null
 
 export const metadataObjectSchema = z.record(
   z.string(),
-  z.custom<Prisma.InputJsonValue | null>(isJsonInputValue, "Values must be valid JSON."),
+  z.custom<Prisma.InputJsonValue | null>(isJsonInputValue, "Custom field values have an unsupported format."),
 );
 
 export function parsePage(searchParams: URLSearchParams) {

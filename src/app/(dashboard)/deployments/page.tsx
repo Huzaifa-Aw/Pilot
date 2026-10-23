@@ -7,6 +7,10 @@ import { db } from "@/lib/db";
 import { resolveTenantContext } from "@/lib/tenant";
 import { roleAtLeast } from "@/lib/rbac";
 import { reportTree } from "@/lib/permissions";
+import { CsvImportPanel } from "@/components/forms/csv-import-panel";
+import { getDefaultMetadataFields } from "@/lib/metadata";
+import { metadataCsvHeaders } from "@/lib/metadata-csv";
+import { serializeCsvRow } from "@/lib/csv";
 
 export const metadata: Metadata = { title: "Deployments" };
 
@@ -14,7 +18,7 @@ export default async function DeploymentsPage() {
   const context = await resolveTenantContext();
   if (!context) return null;
   const scopedMemberIds = roleAtLeast(context.role, "ADMIN") ? undefined : roleAtLeast(context.role, "MANAGER") ? await reportTree(context) : [context.memberId];
-  const deployments = await db.deployment.findMany({
+  const [deployments, metadataFields] = await Promise.all([db.deployment.findMany({
     where: {
       organizationId: context.organizationId,
       ...(scopedMemberIds ? { OR: [
@@ -33,7 +37,12 @@ export default async function DeploymentsPage() {
     },
     orderBy: { startDate: "asc" },
     take: 200,
-  });
+  }), getDefaultMetadataFields(context.organizationId, "deployment")]);
+  const customHeaders = [...metadataCsvHeaders(metadataFields).keys()];
+  const deploymentTemplate = [
+    serializeCsvRow(["deploymentId", "memberEmails", "projectCode", "location", "title", "deploymentType", "country", "startDate", "endDate", "status", "notes", ...customHeaders]),
+    serializeCsvRow(["", "member@example.test", "PRJ-101", "Site A", "Field review", "On-site", "Example region", "2026-11-02", "2026-11-06", "UPCOMING", "", ...customHeaders.map(() => "")]),
+  ].join("\n");
 
   return (
     <div className="space-y-6">
@@ -49,6 +58,15 @@ export default async function DeploymentsPage() {
           </Link>
         )}
       </header>
+
+      {roleAtLeast(context.role, "MANAGER") && (
+        <CsvImportPanel
+          title="Import deployments from CSV"
+          endpoint="/api/deployments/import"
+          template={deploymentTemplate}
+          help="Leave deploymentId blank to create. Provide an existing ID to update; separate member emails with |. Date ranges and capacity conflicts are rechecked."
+        />
+      )}
 
       {deployments.length ? (
         <ul className="grid gap-3 lg:grid-cols-2">

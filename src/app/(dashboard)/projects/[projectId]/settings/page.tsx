@@ -23,7 +23,7 @@ export default async function ProjectSettingsPage({
 
   const projectAccess = await can(context, "project.update", { projectId });
   if (!projectAccess) redirect("/projects");
-  const [project, metadataFields, activeMembers, projectMembers] = await Promise.all([
+  const [project, metadataFields, activeMembers, projectMembers, workflows] = await Promise.all([
     db.project.findFirst({
     where: { id: projectId, organizationId: context.organizationId },
     select: {
@@ -37,6 +37,7 @@ export default async function ProjectSettingsPage({
       budgetHours: true,
       tags: true,
       metadata: true,
+      workflowId: true,
     },
     }),
     getDefaultMetadataFields(context.organizationId, "project"),
@@ -49,6 +50,11 @@ export default async function ProjectSettingsPage({
       where: { organizationId: context.organizationId, projectId },
       select: { memberId: true, role: true, member: { select: { user: { select: { name: true, email: true } } } } },
       orderBy: { role: "asc" },
+    }),
+    db.taskWorkflow.findMany({
+      where: { organizationId: context.organizationId },
+      select: { id: true, name: true },
+      orderBy: [{ isDefault: "desc" }, { name: "asc" }],
     }),
   ]);
   if (!project) notFound();
@@ -64,7 +70,7 @@ export default async function ProjectSettingsPage({
         <p className="mt-2 text-sm text-text-secondary">Update project details. Changes are recorded in the audit history.</p>
       </header>
       <Card className="p-4 sm:p-6">
-        <ProjectForm project={project} metadataFields={metadataFields} initialMetadata={initialMetadata} />
+        <ProjectForm project={project} workflows={workflows} metadataFields={metadataFields} initialMetadata={initialMetadata} />
       </Card>
       {canManageMembers && (
         <Card className="space-y-4 p-4 sm:p-6">

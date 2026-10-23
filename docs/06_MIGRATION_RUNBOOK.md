@@ -4,6 +4,25 @@
 > schema into the new generic, multi-tenant schema. Execute in order.
 > Estimated total time: 3–6 hours for a single-engineer team on a local/staging environment.
 
+## Current application migrations — Local PostgreSQL and Supabase
+
+Apply every checked-in Prisma migration independently to both the local PostgreSQL
+database and the Supabase database. A successful migration against one target does not
+update the other.
+
+1. Configure `DATABASE_URL` and `DIRECT_URL` for the local PostgreSQL target, then run
+   `npm run db:migrate` for development or `npm run db:deploy` to apply existing
+   migrations.
+2. Configure those same variables for the intended Supabase target, then run
+   `npm run db:deploy`.
+3. Run `npx prisma migrate status` against each target separately and verify both report
+   the same migration history.
+4. Back up production data before applying migrations. Never print or commit connection
+   strings while switching targets.
+
+The application schema is defined in [`../prisma/schema.prisma`](../prisma/schema.prisma);
+the SQL files in `../prisma/migrations/` are the source of changes to apply.
+
 ---
 
 ## Pre-Migration Checklist

@@ -10,6 +10,8 @@ import { can } from "@/lib/permissions";
 import { roleAtLeast } from "@/lib/rbac";
 import { resolveTenantContext } from "@/lib/tenant";
 import { deploymentConflictSchema } from "@/lib/validations/deployment";
+import { getDefaultMetadataFields, metadataValuesForFields, unconfiguredMetadataValues } from "@/lib/metadata";
+import { MetadataValuesDisplay } from "@/components/forms/metadata-fields-editor";
 
 export const metadata: Metadata = { title: "Deployment details" };
 
@@ -34,6 +36,7 @@ export default async function DeploymentDetailPage({
   });
   if (!deployment) notFound();
   if (!(await can(context, "deployment.read", { projectId: deployment.projectId }))) notFound();
+  const metadataFields = await getDefaultMetadataFields(context.organizationId, "deployment");
 
   const parsedConflicts = deploymentConflictSchema.safeParse(deployment.conflictFlags ?? []);
   if (!parsedConflicts.success) throw new Error("The deployment conflict data is invalid.");
@@ -116,14 +119,14 @@ export default async function DeploymentDetailPage({
           </ul>
         </section>
       )}
-      {deployment.metadata && typeof deployment.metadata === "object" && !Array.isArray(deployment.metadata) && (
-        <section aria-labelledby="metadata-title" className="space-y-3">
-          <h2 id="metadata-title" className="font-heading text-lg font-semibold text-text-primary">Additional metadata</h2>
-          <pre className="overflow-x-auto rounded-lg border border-border-default bg-surface p-4 font-mono text-xs text-text-secondary">
-            {JSON.stringify(deployment.metadata, null, 2)}
-          </pre>
-        </section>
-      )}
+      <section aria-labelledby="metadata-title" className="space-y-3">
+        <h2 id="metadata-title" className="font-heading text-lg font-semibold text-text-primary">Additional details</h2>
+        <MetadataValuesDisplay
+          fields={metadataFields}
+          values={metadataValuesForFields(metadataFields, deployment.metadata ?? {})}
+          unconfigured={unconfiguredMetadataValues(metadataFields, deployment.metadata ?? {})}
+        />
+      </section>
     </div>
   );
 }

@@ -372,6 +372,10 @@ Links asset to a project via `ProjectAsset` join.
 Query params: `entityType`, `entityId`, `actorId`, `from`, `to`, `page`, `pageSize`.
 
 Returns paginated, immutable audit trail. **No POST/PATCH/DELETE** routes exist for this resource.
+Each row reports `outcome`, `severity`, and (for failures) `failureCategory`, `errorCode`,
+and a safe summary. Eligible authenticated mutation/import failures are recorded as audit
+events; unexpected request errors are classified as application errors when tenant
+context can be resolved.
 
 ---
 
@@ -449,10 +453,19 @@ Additional workflow routes:
 | `POST /api/assets/[assetId]/checkout` | Check out or return an asset with tenant/member/project/deployment checks |
 | `POST /api/assets/import` | Import up to 500 CSV assets in an audited transaction |
 | `POST /api/deployments` / `PATCH /api/deployments/[deploymentId]` | Create/edit multi-member deployments and recompute per-member conflicts |
+| `GET /api/task-workflows` / `POST /api/task-workflows` | List or create organization workflows and their statuses/transitions |
+| `PATCH /api/task-workflows/[workflowId]` / `DELETE /api/task-workflows/[workflowId]` | Update or remove an unused workflow |
+| `GET /api/task-labels` / `POST /api/task-labels` | List or create organization task labels |
+| `PATCH /api/task-labels/[labelId]` / `DELETE /api/task-labels/[labelId]` | Update or remove a task label |
+| `POST /api/{projects,members,tasks,deployments,allocations,worklogs}/import` | Preview and confirm tenant-scoped CSV imports; member imports update existing accounts only and worklogs cannot alter submitted/approved periods |
+
+CSV imports use a preview/confirm contract, validate all rows before transactional writes,
+and audit each successful row. Omitted optional CSV values leave existing values unchanged;
+worklogs use an organization-scoped external key for stable updates.
 
 The weekly `TimesheetEntry` routes remain for historical compatibility; new time capture
-uses `Worklog` and `TimesheetPeriod`. The audit-log UI and filters are unchanged in this
-revision.
+uses `Worklog` and `TimesheetPeriod`. The audit log is a compact table with outcome,
+severity, filters, and human-readable event details.
 
 ---
 

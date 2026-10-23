@@ -28,14 +28,17 @@ export type EditableProject = {
   endDate: Date | null;
   budgetHours: number | null;
   tags: string[];
+  workflowId: string | null;
 };
 
 export function ProjectForm({
   project,
+  workflows = [],
   metadataFields = [],
   initialMetadata = {},
 }: {
   project?: EditableProject;
+  workflows?: Array<{ id: string; name: string }>;
   metadataFields?: MetadataFieldDefinition[];
   initialMetadata?: MetadataInputValues;
 }) {
@@ -54,6 +57,7 @@ export function ProjectForm({
       title: project?.title ?? "",
       description: project?.description ?? "",
       status: project?.status ?? "PLANNING",
+      workflowId: project?.workflowId ?? workflows[0]?.id,
       startDate: project?.startDate?.toISOString().slice(0, 10) ?? "",
       endDate: project?.endDate?.toISOString().slice(0, 10) ?? "",
       budgetHours: project?.budgetHours ?? "",
@@ -112,6 +116,13 @@ export function ProjectForm({
             ))}
           </select>
         </Field>
+        {workflows.length > 0 && (
+          <Field label="Task workflow" htmlFor="workflowId" error={errors.workflowId?.message}>
+            <select id="workflowId" className="min-h-11 w-full rounded-md border border-border-default bg-surface px-3 text-sm" {...register("workflowId")}>
+              {workflows.map((workflow) => <option key={workflow.id} value={workflow.id}>{workflow.name}</option>)}
+            </select>
+          </Field>
+        )}
         <Field label="Budgeted hours" htmlFor="budgetHours" error={errors.budgetHours?.message}>
           <Input
             id="budgetHours"

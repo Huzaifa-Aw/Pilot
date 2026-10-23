@@ -5,5 +5,5 @@ export const TASK_PRIORITIES = ["LOW", "MEDIUM", "HIGH", "CRITICAL"] as const;
 export const TIMESHEET_STATUSES = ["DRAFT", "SUBMITTED", "APPROVED", "FLAGGED"] as const;
 export const DEPLOYMENT_STATUSES = ["UPCOMING", "ACTIVE", "COMPLETED", "CANCELLED"] as const;
 export const MEMBER_ROLES = ["OWNER", "ADMIN", "MANAGER", "ENGINEER", "VIEWER"] as const;
-export const METADATA_ENTITY_TYPES = ["project", "asset", "member", "milestone", "task"] as const;
-export const AUDIT_ACTIONS = ["CREATE", "UPDATE", "DELETE", "LOGIN", "INVITE", "ROLE_CHANGE", "EXPORT"] as const;
+export const METADATA_ENTITY_TYPES = ["project", "asset", "member", "milestone", "task", "deployment"] as const;
+export const AUDIT_ACTIONS = ["CREATE", "UPDATE", "DELETE", "LOGIN", "INVITE", "ROLE_CHANGE", "EXPORT", "IMPORT", "ERROR"] as const;

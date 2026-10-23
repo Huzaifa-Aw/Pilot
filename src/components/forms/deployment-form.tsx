@@ -1,7 +1,7 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
-import { ArrowRight, LoaderCircle } from "lucide-react";
+import { ArrowRight, LoaderCircle, Plus, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
@@ -9,10 +9,14 @@ import { z } from "zod";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { DEPLOYMENT_STATUSES } from "@/lib/constants";
-import { deploymentCreateSchema } from "@/lib/validations/deployment";
+import { MetadataFieldsEditor } from "@/components/forms/metadata-fields-editor";
+import { deploymentChecklistItemSchema, deploymentChecklistSchema, deploymentCreateSchema } from "@/lib/validations/deployment";
+import type { MetadataFieldDefinition } from "@/lib/validations/metadata";
+import type { MetadataInputValues } from "@/types/metadata";
 
 type DeploymentInput = z.input<typeof deploymentCreateSchema>;
 type DeploymentValues = z.output<typeof deploymentCreateSchema>;
+type ChecklistItem = z.infer<typeof deploymentChecklistItemSchema>;
 type FormValues = {
   memberIds: string[];
   projectId: string;
@@ -33,18 +37,22 @@ export function DeploymentForm({
   initialValues,
   initialChecklist,
   initialMetadata,
+  metadataFields,
 }: {
   members: Array<{ id: string; name: string }>;
   projects: Array<{ id: string; code: string; title: string }>;
   deploymentId?: string;
   initialValues?: FormValues;
   initialChecklist?: unknown;
-  initialMetadata?: unknown;
+  initialMetadata: MetadataInputValues;
+  metadataFields: MetadataFieldDefinition[];
 }) {
   const router = useRouter();
   const [error, setError] = useState("");
-  const [checklistText, setChecklistText] = useState(JSON.stringify(initialChecklist ?? [], null, 2));
-  const [metadataText, setMetadataText] = useState(JSON.stringify(initialMetadata ?? {}, null, 2));
+  const parsedChecklist = deploymentChecklistSchema.safeParse(initialChecklist ?? []);
+  const [checklist, setChecklist] = useState<ChecklistItem[]>(parsedChecklist.success ? parsedChecklist.data : []);
+  const [checklistError, setChecklistError] = useState(parsedChecklist.success ? "" : "The saved checklist could not be read. Add replacement items before saving.");
+  const [metadataValues, setMetadataValues] = useState<MetadataInputValues>(initialMetadata);
   const {
     register,
     handleSubmit,
@@ -67,20 +75,15 @@ export function DeploymentForm({
 
   async function submit(values: DeploymentValues) {
     setError("");
-    let checklist: unknown;
-    let metadata: unknown;
-    try {
-      checklist = JSON.parse(checklistText);
-      metadata = JSON.parse(metadataText);
-    } catch {
-      setError("Checklist and metadata must contain valid JSON.");
+    if (checklistError) {
+      setError(checklistError);
       return;
     }
     const payload = {
       ...values,
       memberIds: values.memberIds ?? [],
       checklist,
-      metadata,
+      metadata: metadataValues,
     };
     try {
       const response = await fetch(deploymentId ? `/api/deployments/${deploymentId}` : "/api/deployments", {
@@ -144,15 +147,44 @@ export function DeploymentForm({
           </select>
         </Field>
       </div>
-      <Field label="Checklist (JSON array)" htmlFor="checklist">
-        <textarea id="checklist" rows={5} value={checklistText} onChange={(event) => setChecklistText(event.target.value)} className="w-full rounded-md border border-border-default bg-surface px-3 py-2 font-mono text-xs" />
-      </Field>
+      <fieldset className="space-y-3 border-t border-border-default pt-5">
+        <legend className="px-1 text-sm font-semibold text-text-primary">Checklist</legend>
+        {checklistError && <p role="alert" className="text-sm text-error-dark">{checklistError}</p>}
+        {checklist.length > 0 && <ul className="space-y-2">
+          {checklist.map((item, index) => (
+            <li key={item.id} className="grid gap-2 rounded-md border border-border-default p-3 sm:grid-cols-[minmax(0,1fr)_auto_auto] sm:items-center">
+              <label className="space-y-1">
+                <span className="text-xs font-medium text-text-secondary">Checklist item {index + 1}</span>
+                <Input maxLength={160} required value={item.label} onChange={(event) => setChecklist((items) => items.map((current) => current.id === item.id ? { ...current, label: event.target.value } : current))} />
+              </label>
+              <label className="flex min-h-11 items-center gap-2 text-sm text-text-secondary">
+                <input type="checkbox" className="size-4 accent-brand-primary" checked={item.complete} onChange={(event) => setChecklist((items) => items.map((current) => current.id === item.id ? { ...current, complete: event.target.checked } : current))} />
+                Complete
+              </label>
+              <Button type="button" variant="ghost" size="icon" aria-label={`Remove checklist item ${index + 1}`} onClick={() => {
+                setChecklist((items) => items.filter((current) => current.id !== item.id));
+                setChecklistError("");
+              }}>
+                <Trash2 aria-hidden="true" className="text-error-dark" />
+              </Button>
+            </li>
+          ))}
+        </ul>}
+        <Button type="button" variant="secondary" disabled={checklist.length >= 100} onClick={() => {
+          setChecklistError("");
+          setChecklist((items) => [...items, { id: crypto.randomUUID(), label: "", complete: false }]);
+        }}>
+          <Plus aria-hidden="true" /> Add checklist item
+        </Button>
+      </fieldset>
       <Field label="Notes" htmlFor="notes" error={errors.notes?.message}>
         <textarea id="notes" rows={3} className="w-full rounded-md border border-border-default bg-surface px-3 py-2 text-sm" {...register("notes")} />
       </Field>
-      <Field label="Generic metadata (JSON object)" htmlFor="metadata">
-        <textarea id="metadata" rows={6} value={metadataText} onChange={(event) => setMetadataText(event.target.value)} className="w-full rounded-md border border-border-default bg-surface px-3 py-2 font-mono text-xs" />
-      </Field>
+      <MetadataFieldsEditor
+        fields={metadataFields}
+        values={metadataValues}
+        onChange={(key, value) => setMetadataValues((current) => ({ ...current, [key]: value }))}
+      />
       {error && <p role="alert" className="rounded-md border border-error-light bg-error-light px-3 py-2.5 text-sm text-error-dark">{error}</p>}
       <Button type="submit" disabled={isSubmitting || !members.length || !projects.length}>
         {isSubmitting ? <LoaderCircle className="animate-spin" aria-hidden="true" /> : <ArrowRight aria-hidden="true" />}

@@ -567,6 +567,21 @@ earlier baseline snippets where they differ:
 - `Asset`: location, serial number, acquisition and service dates.
 - `AssetCheckout`: same-tenant member, project, optional deployment, checkout, and return
   history. Assets with checkout history are retired rather than deleted.
+- `TaskWorkflow`, `TaskWorkflowStatus`, and `TaskWorkflowTransition`: organization-scoped
+  workflows assigned to projects, with ordered active statuses, stable reporting
+  categories, required field keys, and allowed status transitions. Existing tasks are
+  assigned to an organization default workflow by the migration.
+- `Task.workflowStatusId`, `flaggedAt`, `flaggedByMemberId`, and `flagReason`: configurable
+  workflow status and a separately tracked flag state. `Task.metadata` remains the
+  persistence format for template-defined custom fields; users edit those fields through
+  labeled controls, not a JSON editor.
+- `TaskLabel` and `TaskLabelAssignment`: organization-scoped labels and tenant-safe task
+  assignments.
+- `AuditLog.outcome`, `severity`, `failureCategory`, `errorCode`, `summary`, and
+  `correlationId`: distinguish successful activity from failure, warning-level user
+  errors from application errors, and provide a safe human-readable audit summary.
+- `Worklog.importKey`: optional organization-scoped external key used to update imported
+  draft/reopened time entries without duplicating them.
 
 ---
 

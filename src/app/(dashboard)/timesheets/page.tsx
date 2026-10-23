@@ -11,6 +11,8 @@ import { db } from "@/lib/db";
 import { reportTree } from "@/lib/permissions";
 import { roleAtLeast } from "@/lib/rbac";
 import { resolveTenantContext } from "@/lib/tenant";
+import { CsvImportPanel } from "@/components/forms/csv-import-panel";
+import { worklogsCsvTemplate } from "@/lib/csv-templates";
 
 export const metadata: Metadata = { title: "Timesheets" };
 
@@ -150,6 +152,14 @@ export default async function TimesheetsPage({ searchParams }: { searchParams: P
           <button className="min-h-11 rounded-md border border-border-default px-3 text-sm font-semibold">Go</button>
         </form>
       </header>
+      {tab === "mine" && (
+        <CsvImportPanel
+          title="Import draft time records from CSV"
+          endpoint="/api/worklogs/import"
+          template={worklogsCsvTemplate}
+          help="New or updated time records stay in open or reopened timesheets. Submitted and approved months cannot be changed. Use a stable externalKey to update the same row."
+        />
+      )}
 
       {notifications.length > 0 && tab === "mine" && (
         <aside className="rounded-lg border border-warning-light bg-warning-light/40 p-4" aria-label="Timesheet reminders">

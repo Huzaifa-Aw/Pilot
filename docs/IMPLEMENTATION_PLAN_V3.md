@@ -1,10 +1,10 @@
 # Implementation Plan V3 — Workspace UX and Data Workflows
 
-> Proposed follow-on to [IMPLEMENTATION_PLAN_V2.md](./IMPLEMENTATION_PLAN_V2.md).
-> This document records the requested scope and an implementation sequence; it does not
-> claim that any V3 work has been implemented. V2's delivered work remains the baseline.
+> Follow-on to [IMPLEMENTATION_PLAN_V2.md](./IMPLEMENTATION_PLAN_V2.md).
+> This document records the requested scope, implementation sequence, and V3 delivery
+> status. V2's delivered work remains the baseline.
 >
-> This plan covers the new requests: organization sign-out, compact filters, a more
+> This plan covers the requests: organization sign-out, compact filters, a more
 > Jira-like board with list mode and configurable workflows, allocation synchronization
 > and date ranges, a compact member profile, a tabular audit log, workspace-shell
 > refinements, non-technical forms, and CSV templates/imports for applicable sections.
@@ -13,6 +13,14 @@ Governing rules remain unchanged: [AGENTS.md](../AGENTS.md), tenant isolation on
 organization-owned query, server-side authorization, `createAuditEvent()` for required
 mutations, Zod validation, domain-specific values in `metadata`, no payments, and
 responsive/accessible UI. Read the relevant blueprint documents before implementation.
+
+## Implementation status
+
+The V3 feature work in Phases 0–7 has been implemented, including compact filters,
+navigation changes, the workflow-aware board/list, allocation synchronization, profile
+and audit layouts, JSON-free metadata controls, and CSV preview/confirm imports. Phase 8
+documentation and focused automated checks are complete. See
+[Section 15](#15-delivery-and-verification-record) for validation and remaining checks.
 
 ---
 
@@ -551,17 +559,16 @@ rather than create parallel rules.
    with visual forms and human-readable summaries. JSON remains an internal transport
    or persistence format only.
 
-### Implementation assumptions to verify against the existing schema
+### Implementation decisions
 
-- Multiple workflow definitions are organization-scoped and assignable per project;
-  projects without an explicit selection use the organization default.
-- A shared board containing projects with different workflows must clearly group their
-  statuses or ask the user to select a project/workflow context. A task may only
-  transition within its assigned workflow.
-- Audit severity/category values are machine-readable and map to understandable
-  labels/semantic colors.
-- CSV time updates use a stable external row key, are tenant-scoped, and cannot alter a
-  submitted or approved period. Define the storage key and migration before imports.
+- Workflow definitions are organization-scoped and assignable per project; projects
+  without an explicit selection use the organization default.
+- The shared board groups work by project workflow and constrains status transitions to
+  the task's assigned workflow.
+- Audit outcome, severity, and failure category are machine-readable and rendered with
+  understandable labels and semantic colors.
+- CSV worklog updates use an organization-scoped external key and cannot alter a
+  submitted or approved period.
 
 ## 14. Explicitly out of scope
 
@@ -572,3 +579,34 @@ rather than create parallel rules.
 - CSV-driven deletions or implicit deletion of records omitted from a file.
 - New database allocation-range columns; allocations remain weekly records.
 - Changing unrelated existing work or overwriting uncommitted changes.
+
+## 15. Delivery and verification record
+
+Implemented V3 behavior includes:
+
+- URL-backed compact filters with removable applied-filter chips across project, people,
+  asset, report, audit, and task-board views.
+- Sign-out on organization creation, collapsed/hover-expand desktop navigation, compact
+  workspace header, and a responsive task board with list mode.
+- Organization workflows, configurable status transitions and required fields, project
+  workflow assignment, labels, flags, and human-readable custom metadata forms.
+- Allocation percentage/hour synchronization, date-range expansion into weekly records,
+  transactional capacity checks, and update feedback; compact member profile metrics.
+- A compact audit table with outcome/severity/failure classification and authenticated
+  failure auditing in the implemented mutation/import paths.
+- Template-backed CSV preview/confirm imports for assets, projects, members, tasks,
+  deployments, allocations, and worklogs. Imports are tenant-scoped and transactional;
+  worklogs cannot alter submitted/approved periods.
+
+Verification run:
+
+| Check | Result |
+|---|---|
+| `npm run typecheck` | Passed |
+| `npm run lint` | Passed |
+| `npm test` | Passed: 43 tests |
+| `npx prisma validate` | Passed |
+
+No live database migration was applied. Production build and browser/Playwright
+verification were not run; deployment and interactive behavior should be verified with
+the intended Vercel/database environment before release.

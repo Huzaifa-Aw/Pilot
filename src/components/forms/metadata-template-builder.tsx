@@ -23,7 +23,7 @@ import type { MetadataFieldDefinition } from "@/lib/validations/metadata";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
-type EntityType = "project" | "asset" | "member" | "milestone" | "task";
+type EntityType = "project" | "asset" | "member" | "milestone" | "task" | "deployment";
 type Template = {
   id: string;
   name: string;
@@ -31,7 +31,7 @@ type Template = {
   fields: MetadataFieldDefinition[];
   isDefault: boolean;
 };
-type EditableField = MetadataFieldDefinition & { clientId: string };
+type EditableField = MetadataFieldDefinition & { clientId: string; autoKey?: boolean };
 
 const types = ["text", "number", "date", "select", "multi-select", "boolean", "textarea"] as const;
 
@@ -44,7 +44,7 @@ export function MetadataTemplateBuilder({
 }) {
   const [name, setName] = useState(initialTemplate?.name ?? defaultName(entityType));
   const [fields, setFields] = useState<EditableField[]>(() =>
-    (initialTemplate?.fields ?? []).map((field) => ({ ...field, clientId: field.key })),
+    (initialTemplate?.fields ?? []).map((field) => ({ ...field, clientId: field.key, autoKey: false })),
   );
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
@@ -67,7 +67,7 @@ export function MetadataTemplateBuilder({
 
   function addField() {
     const key = `field_${Date.now()}`;
-    setFields((current) => [...current, { clientId: `${key}_${current.length}`, key, label: "New field", type: "text", required: false, order: current.length }]);
+    setFields((current) => [...current, { clientId: `${key}_${current.length}`, key, label: "New field", type: "text", required: false, order: current.length, autoKey: true }]);
     setSuccess("");
     setError("");
   }
@@ -97,6 +97,7 @@ export function MetadataTemplateBuilder({
             type: field.type,
             options: field.options,
             required: field.required,
+            section: field.section,
             order,
             unit: field.unit,
           })),
@@ -135,7 +136,20 @@ export function MetadataTemplateBuilder({
                   <SortableMetadataField
                     key={field.clientId}
                     field={field}
-                    onChange={(update) => updateField(field.clientId, update)}
+                    onChange={(update) => {
+                      if (field.autoKey && update.label !== undefined) {
+                        const base = fieldKeyFromLabel(update.label);
+                        let key = base;
+                        let suffix = 2;
+                        while (fields.some((other) => other.clientId !== field.clientId && other.key === key)) {
+                          key = `${base}_${suffix}`;
+                          suffix += 1;
+                        }
+                        updateField(field.clientId, { ...update, key });
+                      } else {
+                        updateField(field.clientId, update);
+                      }
+                    }}
                     onRemove={() => setFields((current) => current.filter((item) => item.clientId !== field.clientId).map((item, order) => ({ ...item, order })))}
                   />
                 ))}
@@ -198,8 +212,8 @@ function SortableMetadataField({
             <Input value={field.label} onChange={(event) => onChange({ label: event.target.value })} />
           </label>
           <label className="space-y-1">
-            <span className="text-xs font-medium text-text-secondary">Field key</span>
-            <Input value={field.key} onChange={(event) => onChange({ key: event.target.value.replace(/[^A-Za-z0-9_]/g, "") })} />
+            <span className="text-xs font-medium text-text-secondary">Section (optional)</span>
+            <Input maxLength={100} value={field.section ?? ""} placeholder="Additional details" onChange={(event) => onChange({ section: event.target.value })} />
           </label>
           <label className="space-y-1">
             <span className="text-xs font-medium text-text-secondary">Type</span>
@@ -243,4 +257,9 @@ function SortableMetadataField({
 
 function defaultName(entityType: EntityType) {
   return `${entityType.charAt(0).toUpperCase()}${entityType.slice(1)} fields`;
+}
+
+function fieldKeyFromLabel(label: string) {
+  const key = label.trim().replace(/[^A-Za-z0-9]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 56);
+  return /^[A-Za-z]/.test(key) ? key : `field_${key || "value"}`;
 }

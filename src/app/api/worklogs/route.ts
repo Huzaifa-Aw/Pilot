@@ -1,7 +1,7 @@
 import { AuditAction, Prisma, TimesheetPeriodStatus } from "@prisma/client";
 import { NextRequest, NextResponse } from "next/server";
 import { createAuditEvent } from "@/lib/audit";
-import { isTransactionConflict, requireTenantRole } from "@/lib/api";
+import { auditUserFailureResponse, isTransactionConflict, requireTenantRole } from "@/lib/api";
 import { db } from "@/lib/db";
 import { can } from "@/lib/permissions";
 import { roleAtLeast } from "@/lib/rbac";
@@ -53,28 +53,31 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   const { context, response } = await requireTenantRole("ENGINEER");
   if (response) return response;
+  const fail = (status: number, error: string, code: string) => auditUserFailureResponse({
+    request, context, action: AuditAction.CREATE, entityType: "worklog", status, error, code,
+  });
   let body: unknown;
   try {
     body = await request.json();
   } catch (error) {
     if (error instanceof SyntaxError) {
-      return NextResponse.json({ error: "Request body must be valid JSON.", code: "VALIDATION_ERROR" }, { status: 400 });
+      return fail(400, "Request body must be valid JSON.", "VALIDATION_ERROR");
     }
     throw error;
   }
   const parsed = worklogCreateSchema.safeParse(body);
   if (!parsed.success) {
-    return NextResponse.json({ error: "Check the time entry details.", code: "VALIDATION_ERROR", details: parsed.error.flatten().fieldErrors }, { status: 422 });
+    return fail(422, "Check the time entry details.", "VALIDATION_ERROR");
   }
   const memberId = parsed.data.memberId ?? context.memberId;
   if (memberId !== context.memberId && !roleAtLeast(context.role, "ADMIN")) {
-    return NextResponse.json({ error: "Only an administrator can log time for another person.", code: "FORBIDDEN" }, { status: 403 });
+    return fail(403, "Only an administrator can log time for another person.", "FORBIDDEN");
   }
   if (memberId === context.memberId && !(await can(context, "timesheet.log"))) {
-    return NextResponse.json({ error: "Your role cannot log time.", code: "FORBIDDEN" }, { status: 403 });
+    return fail(403, "Your role cannot log time.", "FORBIDDEN");
   }
   if (parsed.data.date > new Date(new Date().toISOString().slice(0, 10) + "T00:00:00.000Z")) {
-    return NextResponse.json({ error: "Time can only be logged for today or an earlier date.", code: "VALIDATION_ERROR" }, { status: 422 });
+    return fail(422, "Time can only be logged for today or an earlier date.", "VALIDATION_ERROR");
   }
 
   let result;
@@ -155,16 +158,16 @@ export async function POST(request: NextRequest) {
     }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
   } catch (error) {
     if (isTransactionConflict(error)) {
-      return NextResponse.json({ error: "Time entries changed concurrently. Refresh and try again.", code: "CONFLICT" }, { status: 409 });
+      return fail(409, "Time entries changed concurrently. Refresh and try again.", "CONFLICT");
     }
     throw error;
   }
 
-  if (result.kind === "member") return NextResponse.json({ error: "Active member not found.", code: "NOT_FOUND" }, { status: 404 });
-  if (result.kind === "task") return NextResponse.json({ error: "Choose a task in the selected project.", code: "VALIDATION_ERROR" }, { status: 422 });
-  if (result.kind === "project") return NextResponse.json({ error: "Project not found.", code: "NOT_FOUND" }, { status: 404 });
-  if (result.kind === "forbidden") return NextResponse.json({ error: "You must be a member of this project to log time against it.", code: "FORBIDDEN" }, { status: 403 });
-  if (result.kind === "locked") return NextResponse.json({ error: "This submitted or approved month is locked.", code: "TIMESHEET_LOCKED" }, { status: 409 });
-  if (result.kind === "daily-limit") return NextResponse.json({ error: "Daily time cannot exceed 24 hours.", code: "DAILY_LIMIT" }, { status: 422 });
+  if (result.kind === "member") return fail(404, "Active member not found.", "NOT_FOUND");
+  if (result.kind === "task") return fail(422, "Choose a task in the selected project.", "VALIDATION_ERROR");
+  if (result.kind === "project") return fail(404, "Project not found.", "NOT_FOUND");
+  if (result.kind === "forbidden") return fail(403, "You must be a member of this project to log time against it.", "FORBIDDEN");
+  if (result.kind === "locked") return fail(409, "This submitted or approved month is locked.", "TIMESHEET_LOCKED");
+  if (result.kind === "daily-limit") return fail(422, "Daily time cannot exceed 24 hours.", "DAILY_LIMIT");
   return NextResponse.json({ data: result.data }, { status: 201 });
 }

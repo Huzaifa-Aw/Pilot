@@ -101,6 +101,24 @@ enum AuditAction {
   INVITE
   ROLE_CHANGE
   EXPORT
+  IMPORT
+  ERROR
+}
+
+enum AuditOutcome {
+  SUCCESS
+  FAILURE
+}
+
+enum AuditSeverity {
+  INFO
+  WARNING
+  ERROR
+}
+
+enum AuditFailureCategory {
+  USER_ERROR
+  APPLICATION_ERROR
 }
 
 model Organization {
@@ -136,6 +154,8 @@ model Organization {
   certifications    MemberCertification[]
   deploymentMembers DeploymentMember[]
   assetCheckouts    AssetCheckout[]
+  taskWorkflows     TaskWorkflow[]
+  taskLabels        TaskLabel[]
 }
 
 model User {
@@ -251,6 +271,7 @@ model OrganizationMember {
   deploymentMemberships DeploymentMember[]
   assetCheckouts       AssetCheckout[]     @relation("AssetCheckoutMember")
   approvedCheckouts    AssetCheckout[]     @relation("AssetCheckoutApprover")
+  flaggedTasks         Task[]             @relation("TaskFlagger")
 
   @@unique([organizationId, userId])
   @@unique([id, organizationId])
@@ -310,6 +331,7 @@ model MetadataTemplate {
 model Project {
   id             String        @id @default(uuid())
   organizationId String
+  workflowId     String?
   code           String
   title          String
   description    String?       @db.Text
@@ -325,6 +347,7 @@ model Project {
   updatedAt      DateTime      @updatedAt
 
   organization    Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  workflow        TaskWorkflow?       @relation(fields: [workflowId, organizationId], references: [id, organizationId], onDelete: Restrict)
   milestones     Milestone[]
   tasks          Task[]
   allocations    ResourceAllocation[]
@@ -337,6 +360,7 @@ model Project {
 
   @@unique([organizationId, code])
   @@unique([id, organizationId])
+  @@index([organizationId, workflowId])
   @@index([organizationId, status])
   @@index([organizationId, updatedAt])
 }
@@ -375,6 +399,7 @@ model Task {
   id             String       @id @default(uuid())
   organizationId String
   projectId      String
+  workflowStatusId String?
   milestoneId    String?
   requiredDiscipline String?
   title          String
@@ -391,11 +416,16 @@ model Task {
   reporterMemberId String?
   parentTaskId   String?
   blockedByTaskId String?
+  flaggedAt      DateTime?
+  flaggedByMemberId String?
+  flagReason     String?      @db.Text
   metadata       Json?
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
 
   project     Project         @relation(fields: [projectId, organizationId], references: [id, organizationId], onDelete: Cascade)
+  workflowStatus TaskWorkflowStatus? @relation(fields: [workflowStatusId, organizationId], references: [id, organizationId], onDelete: Restrict)
+  flaggedBy OrganizationMember? @relation("TaskFlagger", fields: [flaggedByMemberId, organizationId], references: [id, organizationId], onDelete: Restrict)
   milestone   Milestone?      @relation(fields: [milestoneId, organizationId], references: [id, organizationId], onDelete: Restrict)
   assignments TaskAssignment[]
   worklogs    Worklog[]
@@ -403,11 +433,101 @@ model Task {
   children    Task[]          @relation("TaskHierarchy")
   blocker     Task?           @relation("TaskDependency", fields: [blockedByTaskId, organizationId], references: [id, organizationId], onDelete: Restrict)
   blockedTasks Task[]          @relation("TaskDependency")
+  labels       TaskLabelAssignment[]
 
   @@unique([id, organizationId])
   @@unique([projectId, taskNumber])
   @@index([organizationId, projectId, status])
   @@index([organizationId, milestoneId])
+  @@index([organizationId, workflowStatusId])
+  @@index([organizationId, flaggedAt])
+}
+
+model TaskWorkflow {
+  id             String   @id @default(uuid())
+  organizationId String
+  name           String
+  isDefault      Boolean  @default(false)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  statuses     TaskWorkflowStatus[]
+  transitions  TaskWorkflowTransition[]
+  projects     Project[]
+
+  @@unique([id, organizationId])
+  @@unique([organizationId, name])
+  @@index([organizationId, isDefault])
+}
+
+model TaskWorkflowStatus {
+  id               String     @id @default(uuid())
+  organizationId   String
+  workflowId       String
+  key              String
+  name             String
+  category         TaskStatus
+  sortOrder        Int
+  isInitial        Boolean    @default(false)
+  isActive         Boolean    @default(true)
+  requiredFieldKeys String[]  @default([])
+  createdAt        DateTime   @default(now())
+  updatedAt        DateTime   @updatedAt
+
+  workflow       TaskWorkflow              @relation(fields: [workflowId, organizationId], references: [id, organizationId], onDelete: Cascade)
+  tasks          Task[]
+  transitionsFrom TaskWorkflowTransition[] @relation("WorkflowTransitionFrom")
+  transitionsTo   TaskWorkflowTransition[] @relation("WorkflowTransitionTo")
+
+  @@unique([id, organizationId])
+  @@unique([workflowId, key])
+  @@index([organizationId, workflowId, sortOrder])
+}
+
+model TaskWorkflowTransition {
+  id             String   @id @default(uuid())
+  organizationId String
+  workflowId     String
+  fromStatusId   String
+  toStatusId     String
+  createdAt      DateTime @default(now())
+
+  workflow   TaskWorkflow       @relation(fields: [workflowId, organizationId], references: [id, organizationId], onDelete: Cascade)
+  fromStatus TaskWorkflowStatus @relation("WorkflowTransitionFrom", fields: [fromStatusId, organizationId], references: [id, organizationId], onDelete: Cascade)
+  toStatus   TaskWorkflowStatus @relation("WorkflowTransitionTo", fields: [toStatusId, organizationId], references: [id, organizationId], onDelete: Cascade)
+
+  @@unique([fromStatusId, toStatusId])
+  @@index([organizationId, workflowId])
+}
+
+model TaskLabel {
+  id             String   @id @default(uuid())
+  organizationId String
+  name           String
+  color          String   @default("neutral")
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  assignments  TaskLabelAssignment[]
+
+  @@unique([id, organizationId])
+  @@unique([organizationId, name])
+  @@index([organizationId, name])
+}
+
+model TaskLabelAssignment {
+  organizationId String
+  taskId         String
+  labelId        String
+  createdAt      DateTime @default(now())
+
+  task  Task      @relation(fields: [taskId, organizationId], references: [id, organizationId], onDelete: Cascade)
+  label TaskLabel @relation(fields: [labelId, organizationId], references: [id, organizationId], onDelete: Restrict)
+
+  @@id([taskId, labelId])
+  @@index([organizationId, labelId])
 }
 
 model TaskAssignment {
@@ -522,6 +642,7 @@ model Worklog {
   category       String?
   billable       Boolean  @default(false)
   legacyEntryId  String?
+  importKey      String?
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
@@ -531,6 +652,7 @@ model Worklog {
   task         Task?               @relation(fields: [taskId, organizationId], references: [id, organizationId], onDelete: Restrict)
 
   @@unique([legacyEntryId, date])
+  @@unique([organizationId, importKey])
   @@index([organizationId, memberId, date])
   @@index([organizationId, projectId, date])
   @@index([organizationId, taskId, date])
@@ -700,6 +822,12 @@ model AuditLog {
   actorId        String?
   actorEmail     String?
   action         AuditAction
+  outcome        AuditOutcome @default(SUCCESS)
+  severity       AuditSeverity @default(INFO)
+  failureCategory AuditFailureCategory?
+  errorCode      String?
+  summary        String?      @db.Text
+  correlationId  String?
   entityType     String
   entityId       String?
   before         Json?
@@ -714,4 +842,7 @@ model AuditLog {
   @@index([organizationId, createdAt])
   @@index([organizationId, entityType, entityId])
   @@index([actorId])
+  @@index([organizationId, severity, createdAt])
+  @@index([organizationId, outcome, createdAt])
+  @@index([correlationId])
 }

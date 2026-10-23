@@ -1,6 +1,7 @@
 import { AuditAction, Prisma, PrismaClient } from "@prisma/client";
 import { hash } from "bcryptjs";
 import { z } from "zod";
+import { createDefaultTaskWorkflow } from "../src/lib/task-workflows";
 
 const seedInput = z.object({
   email: z.string().email().transform((email) => email.toLowerCase()),
@@ -33,6 +34,7 @@ async function seed() {
       const organization = await tx.organization.create({
         data: { name: input.organizationName, slug: input.organizationSlug },
       });
+      await createDefaultTaskWorkflow(tx, organization.id);
       const user = await tx.user.create({
         data: { email: input.email, name: input.ownerName, passwordHash },
       });

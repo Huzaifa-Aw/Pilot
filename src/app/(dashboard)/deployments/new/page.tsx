@@ -6,6 +6,7 @@ import { db } from "@/lib/db";
 import { reportTree } from "@/lib/permissions";
 import { roleAtLeast } from "@/lib/rbac";
 import { resolveTenantContext } from "@/lib/tenant";
+import { getDefaultMetadataFields } from "@/lib/metadata";
 
 export const metadata: Metadata = { title: "Schedule deployment" };
 
@@ -17,7 +18,7 @@ export default async function NewDeploymentPage() {
     ? (await db.organizationMember.findMany({ where: { organizationId: context.organizationId, isActive: true }, select: { id: true } })).map(({ id }) => id)
     : await reportTree(context);
 
-  const [members, projects] = await Promise.all([
+  const [members, projects, metadataFields] = await Promise.all([
     db.organizationMember.findMany({
       where: { organizationId: context.organizationId, isActive: true, id: { in: scopeMemberIds } },
       select: { id: true, user: { select: { name: true, email: true } } },
@@ -32,6 +33,7 @@ export default async function NewDeploymentPage() {
       select: { id: true, code: true, title: true },
       orderBy: { title: "asc" },
     }),
+    getDefaultMetadataFields(context.organizationId, "deployment"),
   ]);
 
   return (
@@ -47,6 +49,8 @@ export default async function NewDeploymentPage() {
           <DeploymentForm
             members={members.map((member) => ({ id: member.id, name: member.user.name ?? member.user.email }))}
             projects={projects}
+            metadataFields={metadataFields}
+            initialMetadata={{}}
           />
         </section>
       ) : (

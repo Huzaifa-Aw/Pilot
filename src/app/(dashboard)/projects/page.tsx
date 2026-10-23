@@ -2,10 +2,15 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { ArrowRight, BriefcaseBusiness, Plus, Search } from "lucide-react";
 import { StatusBadge } from "@/components/ui/status-badge";
+import { CompactFilters } from "@/components/data-display/compact-filters";
 import { db } from "@/lib/db";
 import { resolveTenantContext } from "@/lib/tenant";
 import { PROJECT_STATUSES } from "@/lib/constants";
 import { roleAtLeast } from "@/lib/rbac";
+import { CsvImportPanel } from "@/components/forms/csv-import-panel";
+import { getDefaultMetadataFields } from "@/lib/metadata";
+import { metadataCsvHeaders } from "@/lib/metadata-csv";
+import { serializeCsvRow } from "@/lib/csv";
 
 export const metadata: Metadata = { title: "Projects" };
 
@@ -36,6 +41,11 @@ export default async function ProjectsPage({
     orderBy: { updatedAt: "desc" },
     include: { _count: { select: { milestones: true, tasks: true, allocations: true } } },
   });
+  const customHeaders = [...metadataCsvHeaders(await getDefaultMetadataFields(context.organizationId, "project")).keys()];
+  const importTemplate = [
+    serializeCsvRow(["code", "title", "status", "description", "startDate", "endDate", "budgetHours", "workflow", ...customHeaders]),
+    serializeCsvRow(["PRJ-101", "Workspace rollout", "PLANNING", "Coordinate the rollout.", "2026-11-02", "2027-02-26", "240", "", ...customHeaders.map(() => "")]),
+  ].join("\n");
 
   return (
     <div className="space-y-6">
@@ -49,8 +59,25 @@ export default async function ProjectsPage({
           <Plus size={16} aria-hidden="true" /> Create project
         </Link>}
       </header>
+      {roleAtLeast(context.role, "MANAGER") && (
+        <CsvImportPanel
+          title="Import projects from CSV"
+          endpoint="/api/projects/import"
+          template={importTemplate}
+          help="Required columns: code and title. Existing project codes update matching projects. Blank optional cells keep current values."
+        />
+      )}
 
-      <form className="grid gap-3 rounded-lg border border-border-default bg-surface p-4 sm:grid-cols-[minmax(0,1fr)_12rem_auto]">
+      <CompactFilters
+        pathname="/projects"
+        params={params}
+        fieldNames={["search", "status"]}
+        filters={[
+          { key: "search", label: "Search", value: search },
+          { key: "status", label: "Status", value: status?.replaceAll("_", " ") ?? "" },
+        ]}
+      >
+        <div className="grid gap-3 sm:grid-cols-2">
         <label className="relative">
           <span className="sr-only">Search projects</span>
           <Search size={16} aria-hidden="true" className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted" />
@@ -74,10 +101,8 @@ export default async function ProjectsPage({
             ))}
           </select>
         </label>
-        <button type="submit" className="min-h-11 rounded-md border border-border-default px-4 text-sm font-semibold text-text-primary transition-colors duration-150 hover:bg-neutral-50">
-          Apply filters
-        </button>
-      </form>
+        </div>
+      </CompactFilters>
 
       {projects.length ? (
         <>

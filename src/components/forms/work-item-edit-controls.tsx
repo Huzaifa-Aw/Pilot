@@ -12,6 +12,8 @@ type MemberOption = { id: string; name: string; discipline?: string | null };
 export function TaskEditControl({
   projectId,
   task,
+  workflowStatuses,
+  labels,
   milestones,
   relatedTasks,
   members,
@@ -24,6 +26,7 @@ export function TaskEditControl({
     title: string;
     description: string | null;
     status: TaskStatus;
+    workflowStatusId: string | null;
     priority: TaskPriority;
     requiredDiscipline: string | null;
     estimatedHrs: number | null;
@@ -36,7 +39,12 @@ export function TaskEditControl({
     updatedAt: Date;
     assignments: Array<{ memberId: string }>;
     metadata: unknown;
+    labels: Array<{ labelId: string }>;
+    flaggedAt: Date | null;
+    flagReason: string | null;
   };
+  workflowStatuses: Array<{ id: string; name: string; category: TaskStatus; requiredFieldKeys: string[] }>;
+  labels: Array<{ id: string; name: string }>;
   milestones: Array<{ id: string; title: string }>;
   relatedTasks: Array<{ id: string; title: string; taskNumber: number | null }>;
   members: MemberOption[];
@@ -59,7 +67,10 @@ export function TaskEditControl({
     const responseData = {
       title: value("title"),
       description: value("description"),
-      status: value("status"),
+      workflowStatusId: value("workflowStatusId"),
+      labelIds: data.getAll("labelIds").map(String),
+      flagged: data.get("flagged") === "on",
+      flagReason: value("flagReason") || null,
       priority: value("priority"),
       requiredDiscipline: value("requiredDiscipline") || null,
       estimatedHrs: estimated === "" ? null : Number(estimated),
@@ -126,9 +137,9 @@ export function TaskEditControl({
         </label>
         <div className="grid gap-3 sm:grid-cols-2">
           <label className="space-y-1">
-            <span className="text-xs font-medium text-text-secondary">Status</span>
-            <select name="status" defaultValue={task.status} className="min-h-11 w-full rounded-md border border-border-default bg-surface px-3 text-sm">
-              {(["BACKLOG", "IN_PROGRESS", "UNDER_REVIEW", "APPROVED", "COMPLETED", "CANCELLED"] as TaskStatus[]).map((status) => <option key={status} value={status}>{status.replaceAll("_", " ")}</option>)}
+            <span className="text-xs font-medium text-text-secondary">Workflow status</span>
+            <select name="workflowStatusId" defaultValue={task.workflowStatusId ?? ""} className="min-h-11 w-full rounded-md border border-border-default bg-surface px-3 text-sm">
+              {workflowStatuses.map((status) => <option key={status.id} value={status.id}>{status.name}</option>)}
             </select>
           </label>
           <label className="space-y-1">
@@ -164,6 +175,25 @@ export function TaskEditControl({
               {milestones.map((milestone) => <option key={milestone.id} value={milestone.id}>{milestone.title}</option>)}
             </select>
           </label>
+          {labels.length > 0 && (
+            <label className="space-y-1">
+              <span className="text-xs font-medium text-text-secondary">Labels</span>
+              <select multiple name="labelIds" defaultValue={task.labels.map(({ labelId }) => labelId)} className="min-h-24 w-full rounded-md border border-border-default bg-surface px-3 py-2 text-sm">
+                {labels.map((label) => <option key={label.id} value={label.id}>{label.name}</option>)}
+              </select>
+            </label>
+          )}
+          <fieldset className="space-y-2 rounded-md border border-border-default p-3">
+            <legend className="px-1 text-xs font-medium text-text-secondary">Flag</legend>
+            <label className="flex min-h-10 items-center gap-2 text-sm text-text-secondary">
+              <input type="checkbox" name="flagged" defaultChecked={Boolean(task.flaggedAt)} className="size-4 accent-brand-primary" />
+              Flag this task
+            </label>
+            <label className="block space-y-1">
+              <span className="text-xs text-text-muted">Reason (optional)</span>
+              <textarea name="flagReason" defaultValue={task.flagReason ?? ""} maxLength={2000} rows={2} className="w-full rounded-md border border-border-default px-3 py-2 text-sm" />
+            </label>
+          </fieldset>
           <label className="space-y-1">
             <span className="text-xs font-medium text-text-secondary">Parent task (optional)</span>
             <select name="parentTaskId" defaultValue={task.parentTaskId ?? ""} className="min-h-11 w-full rounded-md border border-border-default bg-surface px-3 text-sm">

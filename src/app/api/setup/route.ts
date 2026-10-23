@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { createAuditEvent } from "@/lib/audit";
 import { setupSchema } from "@/lib/validations/setup";
+import { createDefaultTaskWorkflow } from "@/lib/task-workflows";
 
 function isUniqueViolation(error: unknown) {
   return error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002";
@@ -54,6 +55,7 @@ export async function POST(request: NextRequest) {
           slug: input.organizationSlug,
         },
       });
+      await createDefaultTaskWorkflow(tx, organization.id);
       const user = await tx.user.create({
         data: {
           email: input.ownerEmail,
