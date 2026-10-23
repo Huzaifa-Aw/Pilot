@@ -288,7 +288,7 @@ model Milestone {
   description        String?         @db.Text
   status             MilestoneStatus @default(PLANNED)
   targetDate         DateTime?
-  completionPct      Float           @default(0.0) @db.DoublePrecision
+  completionPct      Float           @default(0.0) @db.DoublePrecision // Legacy storage; displayed progress is derived from completed tasks.
   requiresSignoff    Boolean         @default(false)
   signoffByMemberId  String?         // OrganizationMember id of approver
   signoffAt          DateTime?
@@ -561,6 +561,9 @@ earlier baseline snippets where they differ:
 - `Worklog`: per-day entries linked to member, project, optional task, category, and hours.
   `TimesheetPeriod` holds monthly submission/approval state. Existing weekly entries are
   copied to daily worklogs and monthly periods without deleting the source rows.
+- Milestone progress is calculated from the proportion of linked tasks in the `COMPLETED`
+  status. The legacy `Milestone.completionPct` column is retained for existing database
+  compatibility and is not an application input or read source.
 - `Notification`: tenant-scoped in-app reminders.
 - `DeploymentMember`: multi-member assignments, backfilled from the legacy single `memberId`.
 - `Deployment`: generic title/type/metadata fields.

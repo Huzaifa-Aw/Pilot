@@ -105,7 +105,7 @@ export function CsvImportPanel({
         <Upload size={14} aria-hidden="true" />
         Import CSV
       </summary>
-      <div className="absolute left-0 top-full z-40 mt-2 max-h-[min(80vh,42rem)] w-[min(90vw,36rem)] space-y-3 overflow-y-auto rounded-lg border border-border-default bg-surface p-4 shadow-lg">
+      <div className="absolute left-auto right-0 top-full z-40 mt-2 max-h-[min(80vh,42rem)] w-[min(90vw,36rem)] space-y-3 overflow-y-auto rounded-lg border border-border-default bg-surface p-4 shadow-lg">
         <h2 className="text-sm font-semibold text-text-primary">{title}</h2>
         <p className="text-sm text-text-secondary">{help}</p>
         <Button type="button" variant="secondary" onClick={downloadTemplate}>Download CSV template</Button>

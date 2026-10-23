@@ -145,7 +145,7 @@ export default async function TimesheetsPage({ searchParams }: { searchParams: P
           <h1 className="mt-2 font-heading text-2xl font-semibold tracking-tight text-text-primary sm:text-3xl">Timesheets</h1>
           <p className="mt-2 text-sm text-text-secondary">Log time against projects and tasks, then submit the month for review.</p>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex w-full flex-wrap items-center justify-end gap-2 sm:w-auto">
           {tab === "mine" && (
             <CsvImportPanel
               title="Import draft time records from CSV"

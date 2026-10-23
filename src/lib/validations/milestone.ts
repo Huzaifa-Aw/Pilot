@@ -19,7 +19,6 @@ export const milestoneUpdateSchema = z.object({
   sequenceNumber: z.number().int().min(1).optional(),
   startDate: dateInputSchema.optional(),
   targetDate: dateInputSchema.optional(),
-  completionPct: z.number().finite().min(0).max(100).optional(),
   requiresSignoff: z.boolean().optional(),
   signoffByMemberId: z.string().uuid().nullable().optional(),
   metadata: metadataObjectSchema.nullable().optional(),

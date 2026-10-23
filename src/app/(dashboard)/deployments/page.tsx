@@ -53,7 +53,7 @@ export default async function DeploymentsPage() {
           <p className="mt-2 text-sm text-text-secondary">Plan member assignments and see overlapping project work.</p>
         </div>
         {roleAtLeast(context.role, "MANAGER") && (
-          <div className="flex items-center gap-2">
+          <div className="flex w-full items-center justify-end gap-2 sm:w-auto">
             <CsvImportPanel
               title="Import deployments from CSV"
               endpoint="/api/deployments/import"

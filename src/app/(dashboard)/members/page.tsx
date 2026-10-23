@@ -156,12 +156,14 @@ export default async function PeoplePage({
         <section className="space-y-3" aria-labelledby="allocation-list-title">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <h2 id="allocation-list-title" className="font-heading text-lg font-semibold text-text-primary">Next 12 weeks</h2>
-            <CsvImportPanel
-              title="Import allocations from CSV"
-              endpoint="/api/allocations/import"
-              template={allocationsCsvTemplate}
-              help="Upsert one weekly allocation per member, project, and Monday. The weekly 100% capacity guard applies to every row."
-            />
+            <div className="ml-auto">
+              <CsvImportPanel
+                title="Import allocations from CSV"
+                endpoint="/api/allocations/import"
+                template={allocationsCsvTemplate}
+                help="Upsert one weekly allocation per member, project, and Monday. The weekly 100% capacity guard applies to every row."
+              />
+            </div>
           </div>
           {allocations.length ? <ul className="space-y-3">{allocations.map((allocation) => (
             <li key={allocation.id} className="rounded-lg border border-border-default bg-surface p-4 sm:p-5">
@@ -213,7 +215,7 @@ export default async function PeoplePage({
           <p className="mt-2 text-sm text-text-secondary">{count} people · directory information is role-scoped.</p>
         </div>
         {roleAtLeast(context.role, "ADMIN") && (
-          <div className="flex items-center gap-2">
+          <div className="flex w-full items-center justify-end gap-2 sm:w-auto">
             <CsvImportPanel
               title="Update people from CSV"
               endpoint="/api/members/import"

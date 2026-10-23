@@ -1,7 +1,8 @@
 "use client";
 
+import { X } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import type { MilestoneStatus, TaskPriority, TaskStatus } from "@prisma/client";
 import { MetadataFieldsEditor } from "@/components/forms/metadata-fields-editor";
 import type { MetadataFieldDefinition } from "@/lib/validations/metadata";
@@ -52,6 +53,8 @@ export function TaskEditControl({
   initialMetadata?: MetadataInputValues;
 }) {
   const router = useRouter();
+  const dialogRef = useRef<HTMLDialogElement>(null);
+  const formRef = useRef<HTMLFormElement>(null);
   const [error, setError] = useState("");
   const [pending, setPending] = useState(false);
   const [metadata, setMetadata] = useState<MetadataInputValues>(initialMetadata);
@@ -95,6 +98,7 @@ export function TaskEditControl({
         setError(result.error ?? "Task couldn't be updated.");
         return;
       }
+      dialogRef.current?.close();
       router.refresh();
     } catch {
       setError("We couldn't reach the server. Check your connection and try again.");
@@ -114,6 +118,7 @@ export function TaskEditControl({
         setError(result.error ?? "Task couldn't be deleted.");
         return;
       }
+      dialogRef.current?.close();
       router.refresh();
     } catch {
       setError("We couldn't reach the server. Check your connection and try again.");
@@ -123,9 +128,26 @@ export function TaskEditControl({
   }
 
   return (
-    <details className="mt-3 rounded-md border border-border-default">
-      <summary className="flex min-h-11 cursor-pointer items-center px-3 text-xs font-semibold text-brand-primary">Edit task details</summary>
-      <form onSubmit={(event) => void save(event)} className="space-y-3 border-t border-border-default p-3" noValidate>
+    <>
+      <button type="button" aria-haspopup="dialog" aria-label={`Edit task ${task.title}`} onClick={() => dialogRef.current?.showModal()} className="min-h-7 text-left text-[10px] font-medium text-brand-primary hover:underline focus-visible:outline-2 focus-visible:outline-brand-primary">Edit</button>
+      <dialog
+        ref={dialogRef}
+        aria-labelledby={`edit-task-title-${task.id}`}
+        aria-describedby={`edit-task-description-${task.id}`}
+        onCancel={(event) => { if (pending) event.preventDefault(); }}
+        onClose={() => { formRef.current?.reset(); setMetadata(initialMetadata); setMetadataChanged(false); setError(""); }}
+        className="fixed inset-0 m-auto max-h-[min(90vh,52rem)] w-[calc(100%-2rem)] max-w-3xl overflow-y-auto rounded-lg border border-border-default bg-surface p-0 text-text-primary shadow-lg backdrop:bg-neutral-900/40"
+      >
+        <header className="flex items-start justify-between gap-4 border-b border-border-default px-4 py-3 sm:px-5">
+          <div className="min-w-0">
+            <h2 id={`edit-task-title-${task.id}`} className="text-base font-semibold">Edit task</h2>
+            <p id={`edit-task-description-${task.id}`} className="mt-1 truncate text-xs text-text-muted">{task.title}</p>
+          </div>
+          <button type="button" disabled={pending} aria-label="Close edit task dialog" onClick={() => dialogRef.current?.close()} className="inline-flex size-9 shrink-0 items-center justify-center rounded-md text-text-muted transition-colors duration-150 hover:bg-neutral-100 focus-visible:outline-2 focus-visible:outline-brand-primary disabled:opacity-50">
+            <X size={16} aria-hidden="true" />
+          </button>
+        </header>
+      <form ref={formRef} onSubmit={(event) => void save(event)} className="space-y-3 p-4 sm:p-5" noValidate>
         <input type="hidden" name="updatedAt" value={task.updatedAt.toISOString()} />
         <label className="block space-y-1">
           <span className="text-xs font-medium text-text-secondary">Title</span>
@@ -221,12 +243,14 @@ export function TaskEditControl({
           </div>
         </fieldset>
         {error && <p role="alert" className="text-sm text-error-dark">{error}</p>}
-        <div className="flex flex-wrap gap-2">
-          <button type="submit" disabled={pending} className="min-h-11 rounded-md bg-brand-primary px-4 text-sm font-semibold text-white disabled:opacity-50">{pending ? "Saving..." : "Save task"}</button>
-          <button type="button" disabled={pending} onClick={() => void remove()} className="min-h-11 rounded-md border border-error-light px-4 text-sm font-semibold text-error-dark disabled:opacity-50">Delete task</button>
+        <div className="flex flex-wrap justify-end gap-2">
+          <button type="button" disabled={pending} onClick={() => dialogRef.current?.close()} className="min-h-10 rounded-md border border-border-default px-3 text-sm font-medium text-text-secondary transition-colors duration-150 hover:bg-neutral-50 disabled:opacity-50">Cancel</button>
+          <button type="button" disabled={pending} onClick={() => void remove()} className="min-h-10 rounded-md border border-error-light px-3 text-sm font-semibold text-error-dark disabled:opacity-50">Delete task</button>
+          <button type="submit" disabled={pending} className="min-h-10 rounded-md bg-brand-primary px-3 text-sm font-semibold text-white disabled:opacity-50">{pending ? "Saving..." : "Save task"}</button>
         </div>
       </form>
-    </details>
+      </dialog>
+    </>
   );
 }
 
@@ -245,7 +269,6 @@ export function MilestoneEditControl({
     sequenceNumber: number;
     startDate: Date | null;
     targetDate: Date | null;
-    completionPct: number;
     requiresSignoff: boolean;
     signoffByMemberId: string | null;
     updatedAt: Date;
@@ -255,6 +278,8 @@ export function MilestoneEditControl({
   initialMetadata?: MetadataInputValues;
 }) {
   const router = useRouter();
+  const dialogRef = useRef<HTMLDialogElement>(null);
+  const formRef = useRef<HTMLFormElement>(null);
   const [error, setError] = useState("");
   const [pending, setPending] = useState(false);
   const [metadata, setMetadata] = useState<MetadataInputValues>(initialMetadata);
@@ -277,7 +302,6 @@ export function MilestoneEditControl({
           sequenceNumber: Number(value("sequenceNumber")),
           startDate: value("startDate") || null,
           targetDate: value("targetDate") || null,
-          completionPct: Number(value("completionPct")),
           requiresSignoff: data.get("requiresSignoff") === "on",
           signoffByMemberId: value("signoffByMemberId") || null,
           updatedAt: value("updatedAt"),
@@ -289,6 +313,7 @@ export function MilestoneEditControl({
         setError(result.error ?? "Milestone couldn't be updated.");
         return;
       }
+      dialogRef.current?.close();
       router.refresh();
     } catch {
       setError("We couldn't reach the server. Check your connection and try again.");
@@ -308,6 +333,7 @@ export function MilestoneEditControl({
         setError(result.error ?? "Milestone couldn't be deleted.");
         return;
       }
+      dialogRef.current?.close();
       router.refresh();
     } catch {
       setError("We couldn't reach the server. Check your connection and try again.");
@@ -317,9 +343,26 @@ export function MilestoneEditControl({
   }
 
   return (
-    <details className="mt-3 rounded-md border border-border-default">
-      <summary className="flex min-h-11 cursor-pointer items-center px-3 text-xs font-semibold text-brand-primary">Edit milestone</summary>
-      <form onSubmit={(event) => void save(event)} className="space-y-3 border-t border-border-default p-3" noValidate>
+    <>
+      <button type="button" aria-haspopup="dialog" aria-label={`Edit milestone ${milestone.title}`} onClick={() => dialogRef.current?.showModal()} className="min-h-6 text-left text-[10px] font-medium text-brand-primary hover:underline focus-visible:outline-2 focus-visible:outline-brand-primary">Edit</button>
+      <dialog
+        ref={dialogRef}
+        aria-labelledby={`edit-milestone-title-${milestone.id}`}
+        aria-describedby={`edit-milestone-description-${milestone.id}`}
+        onCancel={(event) => { if (pending) event.preventDefault(); }}
+        onClose={() => { formRef.current?.reset(); setMetadata(initialMetadata); setMetadataChanged(false); setError(""); }}
+        className="fixed inset-0 m-auto max-h-[min(90vh,48rem)] w-[calc(100%-2rem)] max-w-2xl overflow-y-auto rounded-lg border border-border-default bg-surface p-0 text-text-primary shadow-lg backdrop:bg-neutral-900/40"
+      >
+        <header className="flex items-start justify-between gap-4 border-b border-border-default px-4 py-3 sm:px-5">
+          <div className="min-w-0">
+            <h2 id={`edit-milestone-title-${milestone.id}`} className="text-base font-semibold">Edit milestone</h2>
+            <p id={`edit-milestone-description-${milestone.id}`} className="mt-1 truncate text-xs text-text-muted">{milestone.title}</p>
+          </div>
+          <button type="button" disabled={pending} aria-label="Close edit milestone dialog" onClick={() => dialogRef.current?.close()} className="inline-flex size-9 shrink-0 items-center justify-center rounded-md text-text-muted transition-colors duration-150 hover:bg-neutral-100 focus-visible:outline-2 focus-visible:outline-brand-primary disabled:opacity-50">
+            <X size={16} aria-hidden="true" />
+          </button>
+        </header>
+      <form ref={formRef} onSubmit={(event) => void save(event)} className="space-y-3 p-4 sm:p-5" noValidate>
         <input type="hidden" name="updatedAt" value={milestone.updatedAt.toISOString()} />
         <label className="block space-y-1">
           <span className="text-xs font-medium text-text-secondary">Title</span>
@@ -334,17 +377,18 @@ export function MilestoneEditControl({
           <label className="space-y-1"><span className="text-xs font-medium text-text-secondary">Status</span><select name="status" defaultValue={milestone.status} className="min-h-11 w-full rounded-md border border-border-default bg-surface px-3 text-sm">{(["PLANNED", "IN_PROGRESS", "UNDER_REVIEW", "APPROVED", "COMPLETED"] as MilestoneStatus[]).map((status) => <option key={status}>{status}</option>)}</select></label>
           <label className="space-y-1"><span className="text-xs font-medium text-text-secondary">Start date</span><input type="date" name="startDate" defaultValue={dateValue(milestone.startDate)} className="min-h-11 w-full rounded-md border border-border-default px-3 text-sm" /></label>
           <label className="space-y-1"><span className="text-xs font-medium text-text-secondary">Target date</span><input type="date" name="targetDate" defaultValue={dateValue(milestone.targetDate)} className="min-h-11 w-full rounded-md border border-border-default px-3 text-sm" /></label>
-          <label className="space-y-1"><span className="text-xs font-medium text-text-secondary">Completion %</span><input type="number" name="completionPct" min="0" max="100" step="1" defaultValue={Math.round(milestone.completionPct)} className="min-h-11 w-full rounded-md border border-border-default px-3 text-sm" /></label>
           <label className="flex min-h-11 items-center gap-2 text-sm text-text-secondary"><input type="checkbox" name="requiresSignoff" defaultChecked={milestone.requiresSignoff} className="size-4 accent-brand-primary" /> Requires signoff</label>
         </div>
         <MetadataFieldsEditor fields={metadataFields} values={metadata} onChange={(key, value) => { setMetadataChanged(true); setMetadata((current) => ({ ...current, [key]: value })); }} />
         {error && <p role="alert" className="text-sm text-error-dark">{error}</p>}
-        <div className="flex flex-wrap gap-2">
-          <button type="submit" disabled={pending} className="min-h-11 rounded-md bg-brand-primary px-4 text-sm font-semibold text-white disabled:opacity-50">{pending ? "Saving..." : "Save milestone"}</button>
-          <button type="button" disabled={pending} onClick={() => void remove()} className="min-h-11 rounded-md border border-error-light px-4 text-sm font-semibold text-error-dark disabled:opacity-50">Delete milestone</button>
+        <div className="flex flex-wrap justify-end gap-2">
+          <button type="button" disabled={pending} onClick={() => dialogRef.current?.close()} className="min-h-10 rounded-md border border-border-default px-3 text-sm font-medium text-text-secondary transition-colors duration-150 hover:bg-neutral-50 disabled:opacity-50">Cancel</button>
+          <button type="button" disabled={pending} onClick={() => void remove()} className="min-h-10 rounded-md border border-error-light px-3 text-sm font-semibold text-error-dark disabled:opacity-50">Delete milestone</button>
+          <button type="submit" disabled={pending} className="min-h-10 rounded-md bg-brand-primary px-3 text-sm font-semibold text-white disabled:opacity-50">{pending ? "Saving..." : "Save milestone"}</button>
         </div>
       </form>
-    </details>
+      </dialog>
+    </>
   );
 }
 

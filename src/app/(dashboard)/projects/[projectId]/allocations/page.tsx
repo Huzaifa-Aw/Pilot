@@ -94,12 +94,12 @@ export default async function ProjectAllocationsPage({
       )}
 
       <section aria-labelledby="allocation-list-title" className="space-y-3">
-        <div className="flex items-end justify-between gap-3">
+        <div className="flex flex-wrap items-end justify-between gap-3">
           <div>
             <h2 id="allocation-list-title" className="font-heading text-lg font-semibold text-text-primary">Scheduled allocations</h2>
             <p className="mt-1 text-sm text-text-muted">Next 12 weeks.</p>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="ml-auto flex items-center gap-3">
             {roleAtLeast(context.role, "MANAGER") && (
               <CsvImportPanel
                 title="Import allocations from CSV"

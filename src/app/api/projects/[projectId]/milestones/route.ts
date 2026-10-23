@@ -6,6 +6,7 @@ import { db } from "@/lib/db";
 import { prepareMetadataValues } from "@/lib/metadata";
 import { can } from "@/lib/permissions";
 import { milestoneCreateSchema } from "@/lib/validations/milestone";
+import { milestoneProgressPercent } from "@/lib/milestone-progress";
 
 type RouteContext = { params: Promise<{ projectId: string }> };
 
@@ -25,12 +26,27 @@ export async function GET(_request: NextRequest, { params }: RouteContext) {
     return NextResponse.json({ error: "You don't have access to this project.", code: "FORBIDDEN" }, { status: 403 });
   }
 
-  const milestones = await db.milestone.findMany({
-    where: { projectId, organizationId: context.organizationId },
-    orderBy: { sequenceNumber: "asc" },
-    include: { _count: { select: { tasks: true } } },
+  const [milestones, completedTasks] = await Promise.all([
+    db.milestone.findMany({
+      where: { projectId, organizationId: context.organizationId },
+      orderBy: { sequenceNumber: "asc" },
+      include: { _count: { select: { tasks: true } } },
+    }),
+    db.task.groupBy({
+      by: ["milestoneId"],
+      where: { projectId, organizationId: context.organizationId, milestoneId: { not: null }, status: "COMPLETED" },
+      _count: { _all: true },
+    }),
+  ]);
+  const completedByMilestone = new Map(completedTasks.flatMap(({ milestoneId, _count }) =>
+    milestoneId ? [[milestoneId, _count._all] as const] : [],
+  ));
+  return NextResponse.json({
+    data: milestones.map((milestone) => ({
+      ...milestone,
+      completionPct: milestoneProgressPercent(completedByMilestone.get(milestone.id) ?? 0, milestone._count.tasks),
+    })),
   });
-  return NextResponse.json({ data: milestones });
 }
 
 export async function POST(request: NextRequest, { params }: RouteContext) {

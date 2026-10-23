@@ -1,0 +1,289 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Compact project work layouts</title>
+  <style>
+    :root {
+      color-scheme: light;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      color: #1e293b;
+      background: #f8fafc;
+      font-synthesis: none;
+      text-rendering: optimizeLegibility;
+      --ink: #1e293b;
+      --secondary: #475569;
+      --muted: #64748b;
+      --line: #e2e8f0;
+      --surface: #fff;
+      --subtle: #f8fafc;
+      --blue: #2563eb;
+      --blue-soft: #dbeafe;
+      --purple: #6d28d9;
+      --purple-soft: #ede9fe;
+      --green: #15803d;
+      --green-soft: #dcfce7;
+      --amber: #a16207;
+      --amber-soft: #fef9c3;
+      --red: #b91c1c;
+      --red-soft: #fee2e2;
+    }
+
+    * { box-sizing: border-box; }
+    body { min-width: 320px; margin: 0; }
+    button { font: inherit; }
+    .page { width: min(1320px, calc(100% - 40px)); margin: 0 auto; padding: 26px 0 40px; }
+    .eyebrow { margin: 0 0 6px; color: var(--blue); font-size: 10px; font-weight: 750; letter-spacing: .12em; text-transform: uppercase; }
+    h1 { margin: 0; font-size: clamp(23px, 2.6vw, 30px); letter-spacing: -.04em; line-height: 1.15; }
+    .intro { max-width: 760px; margin: 7px 0 14px; color: var(--secondary); font-size: 12px; line-height: 1.5; }
+    .project-strip { display: flex; min-height: 42px; flex-wrap: wrap; align-items: center; gap: 7px 14px; margin: 14px 0; padding: 8px 12px; border: 1px solid var(--line); border-radius: 7px; background: var(--surface); }
+    .project-code { color: var(--muted); font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 10px; font-weight: 700; }
+    .project-name { font-size: 12px; font-weight: 700; }
+    .project-meta { color: var(--muted); font-size: 10px; }
+    .badge { display: inline-flex; min-height: 19px; align-items: center; gap: 5px; padding: 2px 7px; border-radius: 999px; font-size: 9px; font-weight: 700; white-space: nowrap; }
+    .badge::before { width: 5px; height: 5px; border-radius: 50%; background: currentColor; content: ""; }
+    .blue { color: #1e40af; background: var(--blue-soft); }
+    .purple { color: var(--purple); background: var(--purple-soft); }
+    .green { color: var(--green); background: var(--green-soft); }
+    .amber { color: var(--amber); background: var(--amber-soft); }
+    .red { color: var(--red); background: var(--red-soft); }
+    .neutral { color: var(--secondary); background: #f1f5f9; }
+    .priority { color: var(--red); font-size: 9px; font-weight: 750; }
+
+    .tabs { display: flex; flex-wrap: wrap; gap: 7px; margin-bottom: 10px; }
+    .tab { min-height: 34px; padding: 0 11px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); color: var(--secondary); cursor: pointer; font-size: 10px; font-weight: 650; transition: background 150ms ease, border-color 150ms ease; }
+    .tab:hover { background: #f1f5f9; }
+    .tab[aria-selected="true"] { border-color: var(--blue); background: var(--blue-soft); color: #1e40af; }
+    .option[hidden] { display: none; }
+    .option { overflow: hidden; border: 1px solid var(--line); border-radius: 9px; background: var(--surface); box-shadow: 0 1px 3px rgb(15 23 42 / 4%); }
+    .option-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; padding: 11px 15px; border-bottom: 1px solid var(--line); background: linear-gradient(90deg, #fff, #f8fafc); }
+    .option-title { display: flex; align-items: baseline; gap: 9px; min-width: 0; }
+    .option-number { color: var(--blue); font-size: 9px; font-weight: 750; letter-spacing: .09em; text-transform: uppercase; white-space: nowrap; }
+    h2 { margin: 0; font-size: 14px; letter-spacing: -.02em; }
+    .option-copy { color: var(--muted); font-size: 10px; }
+    .choose { min-height: 30px; padding: 0 9px; border: 1px solid var(--line); border-radius: 5px; background: #fff; color: var(--secondary); cursor: pointer; font-size: 10px; font-weight: 650; }
+    .choose:hover { border-color: #94a3b8; background: var(--subtle); }
+    .split { display: grid; grid-template-columns: minmax(270px, .78fr) minmax(0, 1.42fr); }
+    .pane { min-width: 0; padding: 13px 15px 15px; }
+    .pane + .pane { border-left: 1px solid var(--line); }
+    .pane-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 9px; }
+    .pane-heading { display: flex; align-items: baseline; gap: 7px; }
+    .pane-heading h3 { margin: 0; font-size: 12px; font-weight: 750; }
+    .pane-kicker { color: var(--muted); font-size: 9px; }
+    .count { display: inline-flex; min-width: 19px; height: 19px; align-items: center; justify-content: center; padding: 0 5px; border-radius: 999px; background: #f1f5f9; color: var(--secondary); font-size: 9px; font-weight: 700; }
+    .add { color: var(--blue); font-size: 10px; font-weight: 650; white-space: nowrap; }
+    .mono { color: var(--muted); font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 9px; font-weight: 650; white-space: nowrap; }
+    .title { color: var(--ink); font-size: 11px; font-weight: 700; line-height: 1.35; }
+    .muted { color: var(--muted); font-size: 9px; line-height: 1.4; }
+    .person { display: inline-flex; align-items: center; gap: 5px; color: var(--secondary); font-size: 9px; white-space: nowrap; }
+    .avatar { display: inline-flex; width: 19px; height: 19px; align-items: center; justify-content: center; border: 1px solid #bfdbfe; border-radius: 50%; background: #eff6ff; color: #1d4ed8; font-size: 7px; font-weight: 750; }
+    .progress { height: 4px; overflow: hidden; border-radius: 999px; background: #e2e8f0; }
+    .progress span { display: block; height: 100%; border-radius: inherit; background: var(--blue); }
+    .mini-progress { display: flex; align-items: center; gap: 6px; min-width: 75px; }
+    .mini-progress .progress { flex: 1; }
+    .mini-progress .muted { width: 27px; text-align: right; }
+
+    /* Option 1: balanced side-by-side lists. */
+    .balanced-milestone { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 5px 9px; padding: 8px 0; border-top: 1px solid #eef2f7; }
+    .balanced-milestone:first-child { border-top: 0; }
+    .balanced-milestone-main { min-width: 0; }
+    .balanced-milestone-main .title { margin-top: 3px; }
+    .balanced-milestone-meta { grid-column: 1 / -1; display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 5px 9px; }
+    .balanced-task { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 8px; padding: 8px 0; border-top: 1px solid #eef2f7; }
+    .balanced-task:first-child { border-top: 0; }
+    .balanced-task-main { min-width: 0; }
+    .balanced-task-main .title { margin-top: 3px; }
+    .compact-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 5px 8px; margin-top: 5px; }
+
+    /* Option 2: milestone navigator and selected work pane. */
+    .navigator { display: grid; grid-template-columns: minmax(210px, .62fr) minmax(0, 1.55fr); }
+    .milestone-nav { padding: 10px; border-right: 1px solid var(--line); background: #fbfdff; }
+    .milestone-nav-item { display: block; width: 100%; margin-bottom: 4px; padding: 9px; border: 1px solid transparent; border-radius: 6px; background: transparent; color: var(--secondary); text-align: left; cursor: pointer; }
+    .milestone-nav-item[aria-current="true"] { border-color: #bfdbfe; background: #eff6ff; }
+    .milestone-nav-item .title { display: block; margin-top: 4px; }
+    .milestone-nav-meta { display: flex; align-items: center; justify-content: space-between; gap: 6px; margin-top: 5px; }
+    .task-list { min-width: 0; padding: 13px 15px 15px; }
+    .navigator-task { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 9px; padding: 9px 0; border-top: 1px solid #eef2f7; }
+    .navigator-task:first-of-type { border-top: 0; }
+    .navigator-task .title { margin-top: 3px; }
+
+    /* Option 3: highest-density paired registers, no nested cards. */
+    .register-split { display: grid; grid-template-columns: minmax(0, .9fr) minmax(0, 1.4fr); }
+    .register-pane { min-width: 0; padding: 11px 13px 13px; }
+    .register-pane + .register-pane { border-left: 1px solid var(--line); }
+    .register { width: 100%; border-collapse: collapse; text-align: left; }
+    .register th { padding: 6px 6px; border-bottom: 1px solid var(--line); color: var(--muted); font-size: 8px; font-weight: 750; letter-spacing: .06em; text-transform: uppercase; white-space: nowrap; }
+    .register td { padding: 8px 6px; border-bottom: 1px solid #eef2f7; vertical-align: middle; }
+    .register tr:last-child td { border-bottom: 0; }
+    .register-title { min-width: 120px; }
+    .register-title .title { display: block; margin-top: 3px; }
+    .scroll-x { overflow-x: auto; }
+    .note { margin: 0; padding: 8px 15px; border-top: 1px solid var(--line); background: #fbfdff; color: var(--muted); font-size: 9px; line-height: 1.4; }
+
+    @media (max-width: 760px) {
+      .split, .navigator, .register-split { grid-template-columns: 1fr; }
+      .pane + .pane, .register-pane + .register-pane { border-top: 1px solid var(--line); border-left: 0; }
+      .milestone-nav { border-right: 0; border-bottom: 1px solid var(--line); }
+    }
+    @media (max-width: 520px) {
+      .page { width: calc(100% - 24px); padding-top: 18px; }
+      .option-head, .pane, .task-list, .register-pane { padding-right: 11px; padding-left: 11px; }
+      .balanced-task, .navigator-task { grid-template-columns: minmax(0, 1fr) auto; }
+      .balanced-task > .person, .navigator-task > .person { grid-column: 1; }
+      .balanced-task > .badge, .navigator-task > .badge { grid-column: 2; grid-row: 1 / span 2; }
+      .register { min-width: 430px; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; }
+    }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <p class="eyebrow">Project workspace · compact previews</p>
+    <h1>Tasks and milestones</h1>
+    <p class="intro">The previous stacked layout is removed. These options keep milestones and tasks side by side on desktop, while stacking cleanly on smaller screens. Select an option to compare.</p>
+
+    <div class="project-strip" aria-label="Example project">
+      <span class="project-code">PRJ-042</span>
+      <span class="project-name">Process upgrade program</span>
+      <span class="badge blue">Active</span>
+      <span class="project-meta">Lead: Morgan Lee</span>
+      <span class="project-meta">Target: 18 Dec 2026</span>
+    </div>
+
+    <nav class="tabs" role="tablist" aria-label="Compact project layouts">
+      <button class="tab" type="button" role="tab" aria-selected="true" aria-controls="option-balanced" id="tab-balanced">Option 1 · Balanced split</button>
+      <button class="tab" type="button" role="tab" aria-selected="false" aria-controls="option-navigator" id="tab-navigator">Option 2 · Milestone navigator</button>
+      <button class="tab" type="button" role="tab" aria-selected="false" aria-controls="option-register" id="tab-register">Option 3 · Compact registers</button>
+    </nav>
+
+    <section class="option" role="tabpanel" id="option-balanced" aria-labelledby="tab-balanced">
+      <header class="option-head">
+        <div class="option-title"><span class="option-number">Option 1</span><h2>Balanced split</h2><span class="option-copy">Milestones 40% · Tasks 60%</span></div>
+        <button class="choose" type="button" data-select="Balanced split">Choose this option</button>
+      </header>
+      <div class="split">
+        <section class="pane" aria-labelledby="balanced-milestones">
+          <div class="pane-head"><div class="pane-heading"><h3 id="balanced-milestones">Milestones</h3><span class="count">2</span></div><span class="add">+ Add milestone</span></div>
+          <article class="balanced-milestone">
+            <div class="balanced-milestone-main"><span class="mono">MS-01</span><h4 class="title">Design basis approved</h4></div>
+            <span class="badge green">Completed</span>
+            <div class="balanced-milestone-meta"><span class="muted">Target 14 Aug 2026</span><div class="mini-progress"><div class="progress"><span style="width:100%"></span></div><span class="muted">100%</span></div></div>
+          </article>
+          <article class="balanced-milestone">
+            <div class="balanced-milestone-main"><span class="mono">MS-02</span><h4 class="title">Interface review complete</h4></div>
+            <span class="badge amber">In progress</span>
+            <div class="balanced-milestone-meta"><span class="muted">Target 06 Nov 2026 · Signoff required</span><div class="mini-progress"><div class="progress"><span style="width:65%"></span></div><span class="muted">65%</span></div></div>
+          </article>
+        </section>
+        <section class="pane" aria-labelledby="balanced-tasks">
+          <div class="pane-head"><div class="pane-heading"><h3 id="balanced-tasks">Tasks</h3><span class="count">2</span></div><span class="add">+ Add task</span></div>
+          <article class="balanced-task">
+            <div class="balanced-task-main"><span class="mono">PRJ-042-018 · High</span><h4 class="title">Review interface register</h4><div class="compact-meta"><span class="person"><span class="avatar">AC</span>Avery Chen</span><span class="muted">Due 28 Oct · 6 / 12 h</span><span class="tag">Coordination</span></div></div>
+            <span class="badge purple">In progress</span>
+          </article>
+          <article class="balanced-task">
+            <div class="balanced-task-main"><span class="mono">PRJ-042-021 · Medium</span><h4 class="title">Issue updated design package</h4><div class="compact-meta"><span class="person"><span class="avatar">ML</span>Morgan Lee</span><span class="muted">Due 04 Nov · 0 / 16 h</span><span class="tag">Documentation</span></div></div>
+            <span class="badge neutral">Backlog</span>
+          </article>
+        </section>
+      </div>
+      <p class="note">Best for: a clear overview that gives milestones and tasks equal weight without stacking large cards.</p>
+    </section>
+
+    <section class="option" role="tabpanel" id="option-navigator" aria-labelledby="tab-navigator" hidden>
+      <header class="option-head">
+        <div class="option-title"><span class="option-number">Option 2</span><h2>Milestone navigator</h2><span class="option-copy">Checkpoint list left · linked tasks right</span></div>
+        <button class="choose" type="button" data-select="Milestone navigator">Choose this option</button>
+      </header>
+      <div class="navigator">
+        <nav class="milestone-nav" aria-label="Milestones">
+          <button class="milestone-nav-item" type="button" aria-current="false">
+            <span class="mono">MS-01 · 14 Aug 2026</span><span class="title">Design basis approved</span>
+            <span class="milestone-nav-meta"><span class="badge green">Completed</span><span class="muted">100%</span></span>
+          </button>
+          <button class="milestone-nav-item" type="button" aria-current="true">
+            <span class="mono">MS-02 · 06 Nov 2026</span><span class="title">Interface review complete</span>
+            <span class="milestone-nav-meta"><span class="badge amber">In progress</span><span class="muted">65% · Signoff</span></span>
+          </button>
+          <span class="small-action" style="display:inline-block;margin:5px 8px">+ Add milestone</span>
+        </nav>
+        <section class="task-list" aria-labelledby="navigator-tasks">
+          <div class="pane-head"><div class="pane-heading"><h3 id="navigator-tasks">Interface review tasks</h3><span class="count">2</span></div><span class="add">+ Add task</span></div>
+          <article class="navigator-task">
+            <div><span class="mono">PRJ-042-018</span><h4 class="title">Review interface register</h4></div>
+            <span class="person"><span class="avatar">AC</span>Avery Chen</span>
+            <span class="badge purple">In progress</span>
+          </article>
+          <article class="navigator-task">
+            <div><span class="mono">PRJ-042-019</span><h4 class="title">Resolve open coordination items</h4></div>
+            <span class="person"><span class="avatar">JR</span>Jordan Rivera</span>
+            <span class="badge neutral">Backlog</span>
+          </article>
+          <p class="muted" style="margin:10px 0 0">Tasks linked to this checkpoint are shown here; selecting another milestone changes the work list.</p>
+        </section>
+      </div>
+      <p class="note">Best for: projects where people usually review one milestone at a time and want its related tasks in focus.</p>
+    </section>
+
+    <section class="option" role="tabpanel" id="option-register" aria-labelledby="tab-register" hidden>
+      <header class="option-head">
+        <div class="option-title"><span class="option-number">Option 3</span><h2>Compact registers</h2><span class="option-copy">Dense, aligned rows · minimal decoration</span></div>
+        <button class="choose" type="button" data-select="Compact registers">Choose this option</button>
+      </header>
+      <div class="register-split">
+        <section class="register-pane" aria-labelledby="register-milestones">
+          <div class="pane-head"><div class="pane-heading"><h3 id="register-milestones">Milestones</h3><span class="count">2</span></div><span class="add">+ Add</span></div>
+          <div class="scroll-x">
+            <table class="register">
+              <thead><tr><th>Checkpoint</th><th>Status</th><th>Target</th><th>%</th></tr></thead>
+              <tbody>
+                <tr><td class="register-title"><span class="mono">MS-01</span><span class="title">Design basis approved</span></td><td><span class="badge green">Done</span></td><td class="muted">14 Aug</td><td class="muted">100</td></tr>
+                <tr><td class="register-title"><span class="mono">MS-02</span><span class="title">Interface review complete</span></td><td><span class="badge amber">Active</span></td><td class="muted">06 Nov</td><td class="muted">65</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+        <section class="register-pane" aria-labelledby="register-tasks">
+          <div class="pane-head"><div class="pane-heading"><h3 id="register-tasks">Tasks</h3><span class="count">2</span></div><span class="add">+ Add</span></div>
+          <div class="scroll-x">
+            <table class="register">
+              <thead><tr><th>Work item</th><th>Status</th><th>Owner</th><th>Due</th></tr></thead>
+              <tbody>
+                <tr><td class="register-title"><span class="mono">PRJ-042-018 · High</span><span class="title">Review interface register</span></td><td><span class="badge purple">In progress</span></td><td class="muted">Avery Chen</td><td class="muted">28 Oct</td></tr>
+                <tr><td class="register-title"><span class="mono">PRJ-042-021 · Medium</span><span class="title">Issue updated design package</span></td><td><span class="badge neutral">Backlog</span></td><td class="muted">Morgan Lee</td><td class="muted">04 Nov</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </div>
+      <p class="note">Best for: experienced teams that prioritize information density and scan rows rather than read descriptions.</p>
+    </section>
+
+    <p id="selection-message" role="status" class="intro" style="margin-top:10px">Choose an option above, or tell me “Option 1”, “Option 2”, or “Option 3”.</p>
+  </main>
+  <script>
+    const tabs = [...document.querySelectorAll(".tab")];
+    const options = [...document.querySelectorAll(".option")];
+    const names = ["Balanced split", "Milestone navigator", "Compact registers"];
+    const message = document.querySelector("#selection-message");
+
+    function selectOption(index) {
+      tabs.forEach((tab, tabIndex) => tab.setAttribute("aria-selected", String(tabIndex === index)));
+      options.forEach((option, optionIndex) => { option.hidden = optionIndex !== index; });
+    }
+
+    tabs.forEach((tab, index) => tab.addEventListener("click", () => selectOption(index)));
+    document.querySelectorAll("[data-select]").forEach((button) => button.addEventListener("click", () => {
+      const index = names.indexOf(button.dataset.select);
+      if (index >= 0) {
+        selectOption(index);
+        tabs[index].focus();
+        message.textContent = `${names[index]} selected. Tell me if you’d like this direction implemented.`;
+      }
+    }));
+  </script>
+</body>
+</html>

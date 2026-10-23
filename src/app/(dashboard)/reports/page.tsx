@@ -39,7 +39,7 @@ export default async function ReportsPage({
       status: true,
       startDate: true,
       endDate: true,
-      milestones: { select: { id: true, title: true, status: true, startDate: true, targetDate: true, completionPct: true } },
+      milestones: { select: { id: true, title: true, status: true, startDate: true, targetDate: true } },
       tasks: { select: { id: true, title: true, status: true, startDate: true, dueDate: true, priority: true, estimatedHrs: true, actualHrs: true, createdAt: true, completedAt: true, blockedByTaskId: true, blocker: { select: { title: true, taskNumber: true } }, updatedAt: true } },
     },
     orderBy: { updatedAt: "desc" },
@@ -183,7 +183,7 @@ export default async function ReportsPage({
 function PortfolioGantt({ projects, start, end }: {
   projects: Array<{
     id: string; code: string; title: string; status: string; startDate: Date | null; endDate: Date | null;
-    milestones: Array<{ id: string; title: string; status: string; startDate: Date | null; targetDate: Date | null; completionPct: number }>;
+    milestones: Array<{ id: string; title: string; status: string; startDate: Date | null; targetDate: Date | null }>;
     tasks: Array<{ id: string; title: string; status: string; startDate: Date | null; dueDate: Date | null; blocker: { title: string; taskNumber: number | null } | null }>;
   }>;
   start: Date;

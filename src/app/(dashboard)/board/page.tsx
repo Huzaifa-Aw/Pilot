@@ -303,12 +303,14 @@ export default async function BoardPage({
           <p className="mt-2 text-sm text-text-secondary">Every project task is visible to the whole workspace. Filters focus the shared board; access rules control changes.</p>
         </div>
         {roleAtLeast(context.role, "MANAGER") && (
-          <CsvImportPanel
-            title="Import tasks from CSV"
-            endpoint="/api/tasks/import"
-            template={taskTemplate}
-            help="Use project code and optional task number to update an existing task. Separate assignee emails and labels with |. Workflow status names or keys are accepted."
-          />
+          <div className="flex w-full justify-end sm:w-auto">
+            <CsvImportPanel
+              title="Import tasks from CSV"
+              endpoint="/api/tasks/import"
+              template={taskTemplate}
+              help="Use project code and optional task number to update an existing task. Separate assignee emails and labels with |. Workflow status names or keys are accepted."
+            />
+          </div>
         )}
       </header>
       <TaskBoard

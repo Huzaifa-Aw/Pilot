@@ -194,7 +194,8 @@ All milestones for a project, ordered by `sequenceNumber`.
 **Auth**: MANAGER+. Body includes `title`, `targetDate`, `requiresSignoff`, `metadata`.
 
 ### `PATCH /api/projects/[projectId]/milestones/[milestoneId]`
-Update status, completionPct, or signoff.
+Update milestone status, signoff, schedule, and metadata. Progress is derived from the
+share of linked tasks whose task status is `COMPLETED`; it cannot be entered manually.
 
 **Business rule — Signoff gate**:
 ```typescript

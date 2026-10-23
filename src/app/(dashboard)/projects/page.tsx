@@ -56,7 +56,7 @@ export default async function ProjectsPage({
           <p className="mt-2 text-sm text-text-secondary">Plan work, track milestones, and keep your team aligned.</p>
         </div>
         {roleAtLeast(context.role, "MANAGER") && (
-          <div className="flex items-center gap-2">
+          <div className="flex w-full items-center justify-end gap-2 sm:w-auto">
             <CsvImportPanel
               title="Import projects from CSV"
               endpoint="/api/projects/import"

@@ -6,6 +6,7 @@ import { db } from "@/lib/db";
 import { prepareMetadataValues } from "@/lib/metadata";
 import { can } from "@/lib/permissions";
 import { milestoneUpdateSchema } from "@/lib/validations/milestone";
+import { milestoneProgressPercent } from "@/lib/milestone-progress";
 
 type RouteContext = { params: Promise<{ projectId: string; milestoneId: string }> };
 
@@ -16,7 +17,6 @@ function milestoneSnapshot(milestone: {
   title: string;
   status: MilestoneStatus;
   sequenceNumber: number;
-  completionPct: number;
   requiresSignoff: boolean;
   signoffByMemberId: string | null;
   signoffAt: Date | null;
@@ -32,7 +32,6 @@ function milestoneSnapshot(milestone: {
     title: milestone.title,
     status: milestone.status,
     sequenceNumber: milestone.sequenceNumber,
-    completionPct: milestone.completionPct,
     requiresSignoff: milestone.requiresSignoff,
     signoffByMemberId: milestone.signoffByMemberId,
     signoffAt: milestone.signoffAt?.toISOString() ?? null,
@@ -161,6 +160,10 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
     const updated = await tx.milestone.findFirstOrThrow({
       where: { id: milestoneId, projectId, organizationId: context.organizationId },
     });
+    const [taskCount, completedTaskCount] = await Promise.all([
+      tx.task.count({ where: { milestoneId, projectId, organizationId: context.organizationId } }),
+      tx.task.count({ where: { milestoneId, projectId, organizationId: context.organizationId, status: "COMPLETED" } }),
+    ]);
     await createAuditEvent({
       organizationId: context.organizationId,
       actorId: context.userId,
@@ -171,7 +174,10 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
       after: milestoneSnapshot(updated),
       userAgent: request.headers.get("user-agent"),
     }, tx);
-    return { kind: "updated" as const, data: updated };
+    return {
+      kind: "updated" as const,
+      data: { ...updated, completionPct: milestoneProgressPercent(completedTaskCount, taskCount) },
+    };
     }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
   } catch (error) {
     if (isTransactionConflict(error)) {
