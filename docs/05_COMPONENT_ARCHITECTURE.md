@@ -345,4 +345,22 @@ export default async function ProjectsPage({ searchParams }) {
 
 ---
 
+## 8. V3 workspace interactions
+
+- `CompactFilters` consolidates page-specific filters into a single control and displays
+  applied values as removable chips; filter state is URL-backed.
+- `TaskBoard` provides the shared, horizontally scrollable workflow board, collapsible
+  status columns, named assignees, labels/flags, drag-and-drop where supported, and a
+  tabular list mode. Workflow definitions and required fields are managed with the visual
+  `TaskWorkflowSettings` form.
+- `CsvImportPanel` provides template download, preview, row-level outcomes, and explicit
+  confirmation. Entity-specific handlers own validation and tenant-scoped transactional
+  writes; member imports update existing accounts only.
+- Deployment metadata and checklist values use configured form controls; the UI does not
+  ask users to author or inspect raw JSON.
+- Audit events appear in a compact table with outcome and severity. Selecting an event
+  reveals human-readable details and snapshots.
+
+---
+
 *Next: [`06_MIGRATION_RUNBOOK.md`](./06_MIGRATION_RUNBOOK.md)*

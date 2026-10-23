@@ -5,6 +5,7 @@ import { ArrowRight, Search, UsersRound } from "lucide-react";
 import type { DeploymentStatus } from "@prisma/client";
 import { AllocationEditForm } from "@/components/forms/allocation-form";
 import { CapacityHeatmap } from "@/components/data-display/capacity-heatmap";
+import { CompactFilters } from "@/components/data-display/compact-filters";
 import { OnDeploymentBadge } from "@/components/data-display/on-deployment-badge";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { db } from "@/lib/db";
@@ -12,6 +13,11 @@ import { can, reportTree } from "@/lib/permissions";
 import { resolveTenantContext } from "@/lib/tenant";
 import { roleAtLeast } from "@/lib/rbac";
 import { MEMBER_ROLES } from "@/lib/constants";
+import { CsvImportPanel } from "@/components/forms/csv-import-panel";
+import { getDefaultMetadataFields } from "@/lib/metadata";
+import { metadataCsvHeaders } from "@/lib/metadata-csv";
+import { serializeCsvRow } from "@/lib/csv";
+import { allocationsCsvTemplate } from "@/lib/csv-templates";
 
 export const metadata: Metadata = { title: "People" };
 
@@ -85,6 +91,19 @@ export default async function PeoplePage({
         db.organizationMember.findMany({ where: { organizationId: context.organizationId, isActive: true }, select: { id: true, user: { select: { name: true, email: true } } }, orderBy: { user: { name: "asc" } } }),
       ])
     : [[], []];
+  const customHeaders = [...metadataCsvHeaders(await getDefaultMetadataFields(context.organizationId, "member")).keys()];
+  const memberTemplate = [
+    serializeCsvRow(["email", "title", "discipline", "department", "phone", "location", "capacityHrsPerWeek", "dailyCapacityHrs", "timezone", ...customHeaders]),
+    serializeCsvRow(["member@example.test", "Project lead", "Software", "Delivery", "+1 555 0100", "Remote", "40", "8", "UTC", ...customHeaders.map(() => "")]),
+  ].join("\n");
+  const activeFilters = [
+    { key: "search", label: "Search", value: search },
+    { key: "active", label: "People", value: params.active ? (activeOnly ? "Active" : "All") : "" },
+    { key: "role", label: "Role", value: selectedRole ?? "" },
+    { key: "discipline", label: "Discipline", value: selectedDiscipline ?? "" },
+    { key: "manager", label: "Manager", value: managerOptions.find(({ id }) => id === managerId)?.user.name ?? managerOptions.find(({ id }) => id === managerId)?.user.email ?? "" },
+    { key: "availability", label: "Capacity", value: availability === "available" ? "Under capacity" : availability === "overallocated" ? "Overallocated" : "" },
+  ];
   const today = new Date(new Date().toISOString().slice(0, 10) + "T00:00:00.000Z");
   const deployments = await db.deployment.findMany({
     where: { organizationId: context.organizationId, status: { in: ["ACTIVE", "UPCOMING"] }, startDate: { lte: today }, endDate: { gte: today } },
@@ -134,6 +153,12 @@ export default async function PeoplePage({
           <p className="mt-2 text-sm text-text-secondary">Review weekly capacity and change a project allocation from the same screen.</p>
         </header>
         <PeopleTabs tab="allocations" />
+        <CsvImportPanel
+          title="Import allocations from CSV"
+          endpoint="/api/allocations/import"
+          template={allocationsCsvTemplate}
+          help="Upsert one weekly allocation per member, project, and Monday. The weekly 100% capacity guard applies to every row."
+        />
         <section className="space-y-3" aria-labelledby="allocation-list-title">
           <h2 id="allocation-list-title" className="font-heading text-lg font-semibold text-text-primary">Next 12 weeks</h2>
           {allocations.length ? <ul className="space-y-3">{allocations.map((allocation) => (
@@ -188,6 +213,14 @@ export default async function PeoplePage({
         {roleAtLeast(context.role, "ADMIN") && <Link href="/settings/members" className="inline-flex min-h-11 items-center justify-center gap-2 rounded-md bg-brand-primary px-4 text-sm font-semibold text-white transition-colors duration-150 hover:bg-brand-primary-600">Invite people <ArrowRight size={16} aria-hidden="true" /></Link>}
       </header>
       {roleAtLeast(context.role, "MANAGER") && <PeopleTabs tab="directory" />}
+      {roleAtLeast(context.role, "ADMIN") && (
+        <CsvImportPanel
+          title="Update people from CSV"
+          endpoint="/api/members/import"
+          template={memberTemplate}
+          help="This updates existing organization members by email only. To add new people, use the invitation workflow. Blank optional cells keep current values."
+        />
+      )}
       {capacityMembers.length > 0 && roleAtLeast(context.role, "ENGINEER") && (
         <CapacityHeatmap members={capacityMembers.map((member) => ({ id: member.id, name: member.user.name ?? member.user.email, title: member.title }))} weeks={weeks} allocations={grid} />
       )}
@@ -196,7 +229,14 @@ export default async function PeoplePage({
           <h2 id="directory-title" className="font-heading text-lg font-semibold text-text-primary">Directory</h2>
           <p className="mt-1 text-sm text-text-muted">{count} {count === 1 ? "person" : "people"}</p>
         </div>
-        <form className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <CompactFilters
+          pathname="/members"
+          params={params}
+          fieldNames={["search", "active", "role", "discipline", "manager", "availability"]}
+          filters={activeFilters}
+          preserveOnClear={["tab"]}
+        >
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
           <label className="relative"><span className="sr-only">Search people</span><Search size={16} aria-hidden="true" className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted" /><input name="search" defaultValue={search} placeholder={roleAtLeast(context.role, "ENGINEER") ? "Search name, email, title, or discipline" : "Search names"} className="min-h-11 w-full rounded-md border border-border-default bg-surface pl-9 pr-3 text-sm" /></label>
           <label><span className="sr-only">Person status</span><select name="active" defaultValue={activeOnly ? "true" : "false"} className="min-h-11 w-full rounded-md border border-border-default bg-surface px-3 text-sm"><option value="true">Active people</option><option value="false">All people</option></select></label>
           {roleAtLeast(context.role, "ENGINEER") && <>
@@ -205,8 +245,8 @@ export default async function PeoplePage({
             <label><span className="sr-only">Filter by manager</span><select name="manager" defaultValue={managerId ?? ""} className="min-h-11 w-full rounded-md border border-border-default bg-surface px-3 text-sm"><option value="">All teams</option>{managerOptions.map((manager) => <option key={manager.id} value={manager.id}>{manager.user.name ?? manager.user.email}</option>)}</select></label>
             <label><span className="sr-only">Filter by availability</span><select name="availability" defaultValue={availability} className="min-h-11 w-full rounded-md border border-border-default bg-surface px-3 text-sm"><option value="">Any capacity</option><option value="available">Under capacity</option><option value="overallocated">Overallocated</option></select></label>
           </>}
-          <button type="submit" className="min-h-11 rounded-md border border-border-default bg-surface px-4 text-sm font-semibold text-text-primary hover:bg-neutral-50">Apply</button>
-        </form>
+          </div>
+        </CompactFilters>
         {members.length ? <ul className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">{members.map((member) => (
           <li key={member.id}>
             {roleAtLeast(context.role, "ENGINEER") ? (

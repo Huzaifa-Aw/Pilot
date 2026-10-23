@@ -26,8 +26,8 @@ export function Topbar({
 
   return (
     <>
-      <header className="flex min-h-16 items-center justify-between gap-3 border-b border-border-default bg-surface px-4 md:px-6">
-        <div className="flex min-w-0 items-center gap-3">
+      <header className="flex min-h-16 items-center justify-between gap-2 border-b border-border-default bg-surface px-3 md:px-6">
+        <div className="flex min-w-0 flex-1 items-center gap-2">
           <Button
             variant="ghost"
             size="icon"
@@ -39,9 +39,9 @@ export function Topbar({
           >
             <Menu aria-hidden="true" />
           </Button>
-          <span aria-hidden="true" className="truncate font-heading text-lg font-semibold tracking-tight text-text-primary md:text-xl">{title}</span>
+          <span aria-hidden="true" className="truncate font-heading text-base font-semibold tracking-tight text-text-primary sm:text-lg md:text-xl">{title}</span>
         </div>
-        {actions && <div className="flex shrink-0 items-center gap-2">{actions}</div>}
+        {actions && <div className="ml-2 flex min-w-0 max-w-[55%] shrink-0 items-center gap-2 sm:max-w-[60%]">{actions}</div>}
       </header>
       <MobileNav
         open={navigationOpen}

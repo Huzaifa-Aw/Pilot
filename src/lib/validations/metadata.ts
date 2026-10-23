@@ -8,6 +8,7 @@ export const metadataFieldSchema = z.object({
   type: z.enum(["text", "number", "date", "select", "multi-select", "boolean", "textarea"]),
   options: z.array(z.string().trim().min(1).max(100)).max(100).optional(),
   required: z.boolean().optional(),
+  section: z.string().trim().max(100).optional(),
   order: z.number().int().min(0).max(1000),
   unit: z.string().trim().max(24).optional(),
 });

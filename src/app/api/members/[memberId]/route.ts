@@ -1,7 +1,7 @@
 import { AuditAction, MemberRole, Prisma } from "@prisma/client";
 import { NextRequest, NextResponse } from "next/server";
 import { createAuditEvent } from "@/lib/audit";
-import { requireTenantRole } from "@/lib/api";
+import { auditUserFailureResponse, requireTenantRole } from "@/lib/api";
 import { db } from "@/lib/db";
 import { prepareMetadataValues } from "@/lib/metadata";
 import { can } from "@/lib/permissions";
@@ -97,40 +97,40 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
   const { context, response } = await requireTenantRole("VIEWER");
   if (response) return response;
   const { memberId } = await params;
+  const fail = (status: number, error: string, code: string) => auditUserFailureResponse({
+    request, context, action: AuditAction.UPDATE, entityType: "organization_member", entityId: memberId, status, error, code,
+  });
 
   let body: unknown;
   try {
     body = await request.json();
   } catch (error) {
     if (error instanceof SyntaxError) {
-      return NextResponse.json({ error: "Request body must be valid JSON.", code: "VALIDATION_ERROR" }, { status: 400 });
+      return fail(400, "Request body must be valid JSON.", "VALIDATION_ERROR");
     }
     throw error;
   }
   const parsed = memberUpdateSchema.safeParse(body);
   if (!parsed.success) {
-    return NextResponse.json(
-      { error: "Check the member details.", code: "VALIDATION_ERROR", details: parsed.error.flatten().fieldErrors },
-      { status: 422 },
-    );
+    return fail(422, "Check the member details.", "VALIDATION_ERROR");
   }
 
   const changesRole = parsed.data.role !== undefined;
   const changesActive = parsed.data.isActive !== undefined;
   const hasProfileChanges = Object.keys(parsed.data).some((key) => !["role", "isActive"].includes(key));
   if (changesRole && !(await can(context, "role.manage"))) {
-    return NextResponse.json({ error: "An administrator or owner is required to change roles.", code: "FORBIDDEN" }, { status: 403 });
+    return fail(403, "An administrator or owner is required to change roles.", "FORBIDDEN");
   }
   if (changesActive && !(await can(context, "role.manage"))) {
-    return NextResponse.json({ error: "An administrator or owner is required to change membership status.", code: "FORBIDDEN" }, { status: 403 });
+    return fail(403, "An administrator or owner is required to change membership status.", "FORBIDDEN");
   }
   if (hasProfileChanges && !(await can(context, "profile.update", { memberId })) &&
       !(await can(context, "profile.manage", { memberId }))) {
-    return NextResponse.json({ error: "Update your own profile or ask a manager to make this change.", code: "FORBIDDEN" }, { status: 403 });
+    return fail(403, "Update your own profile or ask a manager to make this change.", "FORBIDDEN");
   }
   if ((parsed.data.emergencyContactName !== undefined || parsed.data.emergencyContactPhone !== undefined) &&
       !(await can(context, "role.manage"))) {
-    return NextResponse.json({ error: "Emergency contact details are restricted to administrators.", code: "FORBIDDEN" }, { status: 403 });
+    return fail(403, "Emergency contact details are restricted to administrators.", "FORBIDDEN");
   }
 
   const updated = await db.$transaction(async (tx) => {
@@ -261,36 +261,39 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
   });
 
   if (updated.kind === "missing") {
-    return NextResponse.json({ error: "Member not found.", code: "NOT_FOUND" }, { status: 404 });
+    return fail(404, "Member not found.", "NOT_FOUND");
   }
   if (updated.kind === "owner") {
-    return NextResponse.json({ error: "Only an owner can change another owner's membership.", code: "FORBIDDEN" }, { status: 403 });
+    return fail(403, "Only an owner can change another owner's membership.", "FORBIDDEN");
   }
   if (updated.kind === "reporting-target") {
-    return NextResponse.json({ error: "Choose an active manager from this organization.", code: "VALIDATION_ERROR" }, { status: 422 });
+    return fail(422, "Choose an active manager from this organization.", "VALIDATION_ERROR");
   }
   if (updated.kind === "reporting-cycle") {
-    return NextResponse.json({ error: "That reporting line would create a cycle.", code: "VALIDATION_ERROR" }, { status: 422 });
+    return fail(422, "That reporting line would create a cycle.", "VALIDATION_ERROR");
   }
   if (updated.kind === "duplicate-skill") {
-    return NextResponse.json({ error: "Skill names must be unique for this member.", code: "VALIDATION_ERROR" }, { status: 422 });
+    return fail(422, "Skill names must be unique for this member.", "VALIDATION_ERROR");
   }
   if (updated.kind === "duplicate-certification") {
-    return NextResponse.json({ error: "Certification names must be unique for this member.", code: "VALIDATION_ERROR" }, { status: 422 });
+    return fail(422, "Certification names must be unique for this member.", "VALIDATION_ERROR");
   }
   if (updated.kind === "last-owner") {
-    return NextResponse.json({ error: "Transfer ownership before removing the last active owner.", code: "LAST_OWNER" }, { status: 422 });
+    return fail(422, "Transfer ownership before removing the last active owner.", "LAST_OWNER");
   }
   if (updated.kind === "metadata") {
-    return NextResponse.json({ error: updated.message, code: "VALIDATION_ERROR", field: "metadata" }, { status: 422 });
+    return fail(422, updated.message, "VALIDATION_ERROR");
   }
   return NextResponse.json({ data: updated.data });
 }
 
-export async function DELETE(_request: NextRequest, { params }: RouteContext) {
+export async function DELETE(request: NextRequest, { params }: RouteContext) {
   const { context, response } = await requireTenantRole("ADMIN");
   if (response) return response;
   const { memberId } = await params;
+  const fail = (status: number, error: string, code: string) => auditUserFailureResponse({
+    request, context, action: AuditAction.UPDATE, entityType: "organization_member", entityId: memberId, status, error, code,
+  });
 
   const result = await db.$transaction(async (tx) => {
     const before = await tx.organizationMember.findFirst({
@@ -319,19 +322,19 @@ export async function DELETE(_request: NextRequest, { params }: RouteContext) {
       entityId: memberId,
       before: memberSnapshot(before),
       after: memberSnapshot(updated),
-      userAgent: _request.headers.get("user-agent"),
+      userAgent: request.headers.get("user-agent"),
     }, tx);
     return { kind: "updated" as const };
   });
 
   if (result.kind === "missing") {
-    return NextResponse.json({ error: "Member not found.", code: "NOT_FOUND" }, { status: 404 });
+    return fail(404, "Member not found.", "NOT_FOUND");
   }
   if (result.kind === "owner") {
-    return NextResponse.json({ error: "An owner cannot be deactivated by an administrator.", code: "FORBIDDEN" }, { status: 403 });
+    return fail(403, "An owner cannot be deactivated by an administrator.", "FORBIDDEN");
   }
   if (result.kind === "last-owner") {
-    return NextResponse.json({ error: "Transfer ownership before deactivating the last active owner.", code: "LAST_OWNER" }, { status: 422 });
+    return fail(422, "Transfer ownership before deactivating the last active owner.", "LAST_OWNER");
   }
   return NextResponse.json({ data: { id: memberId, isActive: false } });
 }

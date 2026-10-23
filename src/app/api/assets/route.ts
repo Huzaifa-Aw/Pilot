@@ -2,7 +2,7 @@ import { AuditAction, Prisma } from "@prisma/client";
 import { NextRequest, NextResponse } from "next/server";
 import { createAuditEvent } from "@/lib/audit";
 import { assetFilterWhere, type AssetAvailability } from "@/lib/asset-filters";
-import { isUniqueViolation, requireTenantRole } from "@/lib/api";
+import { auditUserFailureResponse, isUniqueViolation, requireTenantRole } from "@/lib/api";
 import { db } from "@/lib/db";
 import { prepareMetadataValues } from "@/lib/metadata";
 import { assetCreateSchema } from "@/lib/validations/asset";
@@ -57,25 +57,25 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   const { context, response } = await requireTenantRole("MANAGER");
   if (response) return response;
+  const fail = (status: number, error: string, code: string) => auditUserFailureResponse({
+    request, context, action: AuditAction.CREATE, entityType: "asset", status, error, code,
+  });
   let body: unknown;
   try {
     body = await request.json();
   } catch (error) {
     if (error instanceof SyntaxError) {
-      return NextResponse.json({ error: "Request body must be valid JSON.", code: "VALIDATION_ERROR" }, { status: 400 });
+      return fail(400, "Request body must be valid JSON.", "VALIDATION_ERROR");
     }
     throw error;
   }
   const parsed = assetCreateSchema.safeParse(body);
   if (!parsed.success) {
-    return NextResponse.json(
-      { error: "Check the asset details.", code: "VALIDATION_ERROR", details: parsed.error.flatten().fieldErrors },
-      { status: 422 },
-    );
+    return fail(422, "Check the asset details.", "VALIDATION_ERROR");
   }
   const validation = await prepareMetadataValues(context.organizationId, "asset", parsed.data.metadata ?? {});
   if (!validation.values) {
-    return NextResponse.json({ error: validation.error ?? "Custom values are invalid.", code: "VALIDATION_ERROR", field: "metadata" }, { status: 422 });
+    return fail(422, validation.error ?? "Custom field values are invalid.", "VALIDATION_ERROR");
   }
   const metadataValues: Prisma.InputJsonObject = validation.values;
 
@@ -114,7 +114,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ data: asset }, { status: 201 });
   } catch (error) {
     if (isUniqueViolation(error)) {
-      return NextResponse.json({ error: "An asset with that code already exists.", code: "CONFLICT" }, { status: 409 });
+      return fail(409, "An asset with that code already exists.", "CONFLICT");
     }
     throw error;
   }

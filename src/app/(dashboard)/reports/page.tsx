@@ -5,6 +5,7 @@ import { TaskStatus } from "@prisma/client";
 import { BackLink } from "@/components/layout/BackLink";
 import { ProjectHoursChart, ProjectTaskChart, TaskStatusChart, ThroughputChart } from "@/components/data-display/report-charts";
 import { StatusBadge } from "@/components/ui/status-badge";
+import { CompactFilters } from "@/components/data-display/compact-filters";
 import { db } from "@/lib/db";
 import { reportTree } from "@/lib/permissions";
 import { roleAtLeast } from "@/lib/rbac";
@@ -113,19 +114,29 @@ export default async function ReportsPage({
   });
   const ganttStart = monthStart;
   const ganttEnd = new Date(Date.UTC(monthStart.getUTCFullYear(), monthStart.getUTCMonth() + rangeMonths, 1));
+  const activeFilters = [
+    { key: "project", label: "Project", value: projects.find(({ id }) => id === params.project)?.code ?? "" },
+    { key: "range", label: "Range", value: params.range ? `${rangeMonths} months` : "" },
+  ];
 
   return (
     <div className="space-y-6">
       <BackLink href="/overview" label="Overview" currentPage="Reports" />
       <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div><p className="text-xs font-semibold uppercase tracking-wider text-brand-primary">Management insights</p><h1 className="mt-2 font-heading text-2xl font-semibold tracking-tight text-text-primary sm:text-3xl">Reports</h1><p className="mt-2 text-sm text-text-secondary">Portfolio health, task flow, team capacity, and logged time.</p></div>
-        <form className="flex flex-wrap items-center gap-2">
+        <CompactFilters
+          pathname="/reports"
+          params={params}
+          fieldNames={["project", "range"]}
+          filters={activeFilters}
+        >
+          <div className="grid gap-3 sm:grid-cols-2">
           <label className="sr-only" htmlFor="report-project">Project</label>
           <select id="report-project" name="project" defaultValue={params.project ?? ""} className="min-h-11 rounded-md border border-border-default bg-surface px-3 text-sm"><option value="">All scoped projects</option>{projects.map((project) => <option key={project.id} value={project.id}>{project.code} · {project.title}</option>)}</select>
           <label className="sr-only" htmlFor="report-range">Time range</label>
           <select id="report-range" name="range" defaultValue={String(rangeMonths)} className="min-h-11 rounded-md border border-border-default bg-surface px-3 text-sm"><option value="3">3 months</option><option value="6">6 months</option><option value="12">12 months</option></select>
-          <button className="min-h-11 rounded-md border border-border-default px-3 text-sm font-semibold">Apply</button>
-        </form>
+          </div>
+        </CompactFilters>
       </header>
 
       <section aria-label="Portfolio summary" className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">

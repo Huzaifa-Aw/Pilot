@@ -9,7 +9,7 @@ import { z } from "zod";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { MetadataFieldsEditor } from "@/components/forms/metadata-fields-editor";
-import { TASK_PRIORITIES, TASK_STATUSES } from "@/lib/constants";
+import { TASK_PRIORITIES } from "@/lib/constants";
 import { taskCreateSchema } from "@/lib/validations/task";
 import type { MetadataFieldDefinition } from "@/lib/validations/metadata";
 import type { MetadataInputValues } from "@/types/metadata";
@@ -21,11 +21,15 @@ export function TaskCreateForm({
   projectId,
   milestones,
   members,
+  workflowStatuses,
+  labels = [],
   metadataFields = [],
 }: {
   projectId: string;
   milestones: Array<{ id: string; title: string }>;
   members: Array<{ id: string; name: string; discipline: string | null }>;
+  workflowStatuses: Array<{ id: string; name: string; category: string; isInitial: boolean }>;
+  labels?: Array<{ id: string; name: string }>;
   metadataFields?: MetadataFieldDefinition[];
 }) {
   const router = useRouter();
@@ -43,7 +47,7 @@ export function TaskCreateForm({
     defaultValues: {
       title: "",
       description: "",
-      status: "BACKLOG",
+      workflowStatusId: workflowStatuses.find(({ isInitial }) => isInitial)?.id,
       priority: "MEDIUM",
       estimatedHrs: undefined,
       requiredDiscipline: "",
@@ -51,6 +55,7 @@ export function TaskCreateForm({
       dueDate: "",
       milestoneId: null,
       assigneeIds: [],
+      labelIds: [],
     },
   });
   const selectedAssigneeIds = useWatch({ control, name: "assigneeIds" }) ?? [];
@@ -86,9 +91,9 @@ export function TaskCreateForm({
           {errors.title && <span className="block text-xs text-error-dark">{errors.title.message}</span>}
         </label>
         <label className="space-y-1.5">
-          <span className="text-xs font-semibold text-text-secondary">Status</span>
-          <select className="min-h-11 w-full rounded-md border border-border-default bg-surface px-3 text-sm" {...register("status")}>
-            {TASK_STATUSES.map((status) => <option key={status} value={status}>{status.replaceAll("_", " ")}</option>)}
+          <span className="text-xs font-semibold text-text-secondary">Workflow status</span>
+          <select className="min-h-11 w-full rounded-md border border-border-default bg-surface px-3 text-sm" {...register("workflowStatusId")}>
+            {workflowStatuses.map((status) => <option key={status.id} value={status.id}>{status.name}</option>)}
           </select>
         </label>
         <label className="space-y-1.5">
@@ -104,6 +109,15 @@ export function TaskCreateForm({
               <option value="">No milestone</option>
               {milestones.map((milestone) => <option key={milestone.id} value={milestone.id}>{milestone.title}</option>)}
             </select>
+          </label>
+        )}
+        {labels.length > 0 && (
+          <label className="space-y-1.5">
+            <span className="text-xs font-semibold text-text-secondary">Labels</span>
+            <select multiple className="min-h-24 w-full rounded-md border border-border-default bg-surface px-3 py-2 text-sm" {...register("labelIds")}>
+              {labels.map((label) => <option key={label.id} value={label.id}>{label.name}</option>)}
+            </select>
+            <span className="block text-xs text-text-muted">Use Ctrl or Command to select more than one.</span>
           </label>
         )}
         <label className="space-y-1.5">
@@ -180,35 +194,37 @@ export function TaskCreateForm({
 export function TaskStatusControl({
   projectId,
   taskId,
-  initialStatus,
+  initialWorkflowStatusId,
+  workflowStatuses,
   initialActualHrs,
 }: {
   projectId: string;
   taskId: string;
-  initialStatus: string;
+  initialWorkflowStatusId: string;
+  workflowStatuses: Array<{ id: string; name: string; category: string }>;
   initialActualHrs?: number;
 }) {
   const router = useRouter();
-  const [status, setStatus] = useState(initialStatus);
+  const [workflowStatusId, setWorkflowStatusId] = useState(initialWorkflowStatusId);
   const [actualHrs, setActualHrs] = useState(initialActualHrs ?? 0);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
 
-  async function updateStatus(nextStatus: string) {
+  async function updateStatus(nextWorkflowStatusId: string) {
     setError("");
     setSaving(true);
     try {
       const response = await fetch(`/api/projects/${projectId}/tasks/${taskId}`, {
         method: "PATCH",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ status: nextStatus }),
+        body: JSON.stringify({ workflowStatusId: nextWorkflowStatusId }),
       });
       const result = await response.json();
       if (!response.ok) {
         setError(result.error ?? "Task status couldn't be updated.");
         return;
       }
-      setStatus(result.data.status);
+      setWorkflowStatusId(result.data.workflowStatusId);
       router.refresh();
     } catch {
       setError("We couldn't reach the server. Check your connection and try again.");
@@ -244,12 +260,12 @@ export function TaskStatusControl({
       <label className="block">
         <span className="sr-only">Task status</span>
         <select
-          value={status}
+          value={workflowStatusId}
           disabled={saving}
           onChange={(event) => void updateStatus(event.target.value)}
           className="min-h-11 rounded-md border border-border-default bg-surface px-2 text-xs text-text-secondary focus:border-brand-primary focus:outline-none focus:ring-3 focus:ring-brand-primary/15 disabled:opacity-60"
         >
-          {TASK_STATUSES.map((value) => <option key={value} value={value}>{value.replaceAll("_", " ")}</option>)}
+          {workflowStatuses.map((status) => <option key={status.id} value={status.id}>{status.name}</option>)}
         </select>
       </label>
       <label className="block space-y-1">

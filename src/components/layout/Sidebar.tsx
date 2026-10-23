@@ -14,19 +14,19 @@ export function Sidebar({ currentPath, workspaceName = "Engineering workspace", 
   const visibleItems = navigationItems.filter((item) => roleAtLeast(role, item.minRole));
 
   return (
-    <aside className="hidden h-dvh w-sidebar shrink-0 flex-col bg-sidebar px-4 py-6 text-white md:flex">
-      <Link href="/overview" className="mb-8 flex min-h-11 items-center gap-3 rounded-md px-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white">
+    <aside className="group/sidebar absolute inset-y-0 left-0 z-30 hidden h-dvh w-16 shrink-0 flex-col overflow-hidden bg-sidebar px-2 py-6 text-white shadow-lg transition-[width,padding] duration-150 hover:w-sidebar hover:px-4 group-has-[:focus-visible]/sidebar:w-sidebar group-has-[:focus-visible]/sidebar:px-4 md:flex">
+      <Link href="/overview" title={workspaceName} className="mb-8 flex min-h-11 items-center gap-3 overflow-hidden rounded-md px-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white">
         <span className="flex size-9 items-center justify-center rounded-md bg-brand-primary text-white">
           <WorkspaceIcon aria-hidden="true" size={20} />
         </span>
-        <span className="min-w-0">
+        <span className="min-w-0 opacity-0 transition-opacity delay-75 group-hover/sidebar:opacity-100 group-has-[:focus-visible]/sidebar:opacity-100">
           <span className="block truncate text-sm font-semibold">{workspaceName}</span>
           <span className="mt-0.5 block text-xs text-white/60">Team workspace</span>
         </span>
       </Link>
 
       <nav aria-label="Primary navigation" className="flex-1">
-        <p className="mb-2 px-3 text-xs font-semibold uppercase tracking-wider text-white/45">Workspace</p>
+        <p className="mb-2 hidden px-3 text-xs font-semibold uppercase tracking-wider text-white/45 group-hover/sidebar:block group-has-[:focus-visible]/sidebar:block">Workspace</p>
         <ul className="space-y-1">
           {visibleItems.map(({ href, label, icon: Icon }) => {
             const active = currentPath === href || (href !== "/overview" && currentPath?.startsWith(`${href}/`));
@@ -36,12 +36,12 @@ export function Sidebar({ currentPath, workspaceName = "Engineering workspace", 
                   href={href}
                   aria-current={active ? "page" : undefined}
                   className={cn(
-                    "flex min-h-11 items-center gap-3 rounded-md px-3 text-sm font-medium text-white/80 transition-colors duration-150 hover:bg-sidebar-hover hover:text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white",
+                    "flex min-h-11 items-center gap-3 overflow-hidden rounded-md px-3 text-sm font-medium text-white/80 transition-colors duration-150 hover:bg-sidebar-hover hover:text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white",
                     active && "bg-sidebar-active text-white hover:bg-sidebar-active",
                   )}
                 >
-                  <Icon aria-hidden="true" size={20} />
-                  {label}
+                  <Icon aria-hidden="true" size={20} className="shrink-0" />
+                  <span className="truncate opacity-0 transition-opacity delay-75 group-hover/sidebar:opacity-100 group-has-[:focus-visible]/sidebar:opacity-100">{label}</span>
                 </Link>
               </li>
             );

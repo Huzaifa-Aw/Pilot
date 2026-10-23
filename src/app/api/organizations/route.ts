@@ -4,6 +4,7 @@ import { auth } from "@/lib/auth";
 import { createAuditEvent } from "@/lib/audit";
 import { db } from "@/lib/db";
 import { organizationCreateSchema } from "@/lib/validations/organization";
+import { createDefaultTaskWorkflow } from "@/lib/task-workflows";
 
 function isUniqueViolation(error: unknown) {
   return error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002";
@@ -57,6 +58,7 @@ export async function POST(request: NextRequest) {
       const organization = await tx.organization.create({
         data: parsed.data,
       });
+      await createDefaultTaskWorkflow(tx, organization.id);
       const member = await tx.organizationMember.create({
         data: {
           organizationId: organization.id,

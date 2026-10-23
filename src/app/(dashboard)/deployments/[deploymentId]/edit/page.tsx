@@ -6,6 +6,7 @@ import { db } from "@/lib/db";
 import { can } from "@/lib/permissions";
 import { roleAtLeast } from "@/lib/rbac";
 import { resolveTenantContext } from "@/lib/tenant";
+import { getDefaultMetadataFields, metadataValuesForFields } from "@/lib/metadata";
 
 export const metadata: Metadata = { title: "Edit deployment" };
 
@@ -27,7 +28,7 @@ export default async function EditDeploymentPage({
   if (!deployment) notFound();
   if (!(await can(context, "deployment.update", { projectId: deployment.projectId }))) redirect("/deployments");
 
-  const [members, projects] = await Promise.all([
+  const [members, projects, metadataFields] = await Promise.all([
     db.organizationMember.findMany({
       where: {
         organizationId: context.organizationId,
@@ -44,6 +45,7 @@ export default async function EditDeploymentPage({
       select: { id: true, code: true, title: true },
       orderBy: { title: "asc" },
     }),
+    getDefaultMetadataFields(context.organizationId, "deployment"),
   ]);
   const memberIds = deployment.members.length
     ? deployment.members.map(({ memberId }) => memberId)
@@ -78,7 +80,8 @@ export default async function EditDeploymentPage({
             notes: deployment.notes ?? "",
           }}
           initialChecklist={deployment.checklist ?? []}
-          initialMetadata={deployment.metadata ?? {}}
+          initialMetadata={metadataValuesForFields(metadataFields, deployment.metadata ?? {})}
+          metadataFields={metadataFields}
         />
       </section>
     </div>

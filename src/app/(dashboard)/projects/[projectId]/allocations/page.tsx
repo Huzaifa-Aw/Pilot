@@ -8,6 +8,8 @@ import { StatusBadge } from "@/components/ui/status-badge";
 import { db } from "@/lib/db";
 import { resolveTenantContext } from "@/lib/tenant";
 import { roleAtLeast } from "@/lib/rbac";
+import { CsvImportPanel } from "@/components/forms/csv-import-panel";
+import { allocationsCsvTemplate } from "@/lib/csv-templates";
 
 export const metadata: Metadata = { title: "Project allocations" };
 
@@ -35,6 +37,8 @@ export default async function ProjectAllocationsPage({
   const firstWeek = firstWeekMonday();
   const lastWeek = new Date(firstWeek);
   lastWeek.setUTCDate(lastWeek.getUTCDate() + 11 * 7);
+  const lastWeekEnd = new Date(lastWeek);
+  lastWeekEnd.setUTCDate(lastWeekEnd.getUTCDate() + 6);
   const [members, allocations] = await Promise.all([
     db.organizationMember.findMany({
       where: { organizationId: context.organizationId, isActive: true },
@@ -83,9 +87,19 @@ export default async function ProjectAllocationsPage({
               name: member.user.name ?? member.user.email,
               capacityHrsPerWeek: member.capacityHrsPerWeek,
             }))}
-            weekStartDate={firstWeek.toISOString().slice(0, 10)}
+            startDate={firstWeek.toISOString().slice(0, 10)}
+            endDate={lastWeekEnd.toISOString().slice(0, 10)}
           />
         </section>
+      )}
+
+      {roleAtLeast(context.role, "MANAGER") && (
+        <CsvImportPanel
+          title="Import allocations from CSV"
+          endpoint="/api/allocations/import"
+          template={allocationsCsvTemplate}
+          help="Import weekly allocations across projects. The member, project, and Monday week form the update key; capacity rules apply."
+        />
       )}
 
       <section aria-labelledby="allocation-list-title" className="space-y-3">

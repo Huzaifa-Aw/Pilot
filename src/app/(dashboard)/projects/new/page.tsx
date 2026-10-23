@@ -3,6 +3,7 @@ import { ProjectForm } from "@/components/forms/project-form";
 import { BackLink } from "@/components/layout/BackLink";
 import { getDefaultMetadataFields } from "@/lib/metadata";
 import { resolveTenantContext } from "@/lib/tenant";
+import { db } from "@/lib/db";
 import { redirect } from "next/navigation";
 
 export const metadata: Metadata = { title: "Create project" };
@@ -10,7 +11,14 @@ export const metadata: Metadata = { title: "Create project" };
 export default async function NewProjectPage() {
   const context = await resolveTenantContext();
   if (!context) redirect("/login");
-  const metadataFields = await getDefaultMetadataFields(context.organizationId, "project");
+  const [metadataFields, workflows] = await Promise.all([
+    getDefaultMetadataFields(context.organizationId, "project"),
+    db.taskWorkflow.findMany({
+      where: { organizationId: context.organizationId },
+      select: { id: true, name: true },
+      orderBy: [{ isDefault: "desc" }, { name: "asc" }],
+    }),
+  ]);
 
   return (
     <div className="mx-auto max-w-3xl space-y-6">
@@ -21,7 +29,7 @@ export default async function NewProjectPage() {
         <p className="mt-2 text-sm text-text-secondary">Start with a name, a clear reference code, and the details your team needs.</p>
       </header>
       <section className="rounded-lg border border-border-default bg-surface p-4 shadow-sm sm:p-6">
-        <ProjectForm metadataFields={metadataFields} />
+        <ProjectForm metadataFields={metadataFields} workflows={workflows} />
       </section>
     </div>
   );

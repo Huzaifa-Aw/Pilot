@@ -3,6 +3,10 @@ import Link from "next/link";
 import { ArrowRight, Package, Plus, Search } from "lucide-react";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { AssetCsvImportForm } from "@/components/forms/asset-csv-import-form";
+import { CompactFilters } from "@/components/data-display/compact-filters";
+import { getDefaultMetadataFields } from "@/lib/metadata";
+import { metadataCsvHeaders } from "@/lib/metadata-csv";
+import { serializeCsvRow } from "@/lib/csv";
 import { assetFilterWhere } from "@/lib/asset-filters";
 import { db } from "@/lib/db";
 import { resolveTenantContext } from "@/lib/tenant";
@@ -47,7 +51,7 @@ export default async function AssetsPage({
   const filtersActive = Boolean(search || category || status || memberId || projectId || location);
   const assetWhere = assetFilterWhere(context.organizationId, { search, category, status, memberId, projectId, location });
 
-  const [assets, totalAssetCount, filteredCount, categories, locations, members, projects] = await Promise.all([
+  const [assets, totalAssetCount, filteredCount, categories, locations, members, projects, metadataFields] = await Promise.all([
     db.asset.findMany({
       where: assetWhere,
       include: {
@@ -96,7 +100,21 @@ export default async function AssetsPage({
       select: { id: true, code: true, title: true },
       orderBy: { title: "asc" },
     }),
+    getDefaultMetadataFields(context.organizationId, "asset"),
   ]);
+  const customHeaders = [...metadataCsvHeaders(metadataFields).keys()];
+  const importTemplate = [
+    serializeCsvRow(["assetCode", "title", "category", "status", "location", "serialNumber", "description", "acquiredOn", "nextServiceDate", ...customHeaders]),
+    serializeCsvRow(["TOOL-101", "Inspection kit", "Tools", "ACTIVE", "Store room A", "SN-101", "Quarterly inspection equipment", "2026-01-15", "2027-01-15", ...customHeaders.map(() => "")]),
+  ].join("\n");
+  const activeFilters = [
+    { key: "search", label: "Search", value: search },
+    { key: "category", label: "Category", value: category },
+    { key: "status", label: "Availability", value: availabilityOptions.find(([value]) => value === status)?.[1] ?? "" },
+    { key: "memberId", label: "Member", value: members.find(({ id }) => id === memberId)?.user.name ?? members.find(({ id }) => id === memberId)?.user.email ?? "" },
+    { key: "projectId", label: "Project", value: projects.find(({ id }) => id === projectId)?.code ?? "" },
+    { key: "location", label: "Location", value: location },
+  ];
 
   return (
     <div className="space-y-6">
@@ -113,10 +131,16 @@ export default async function AssetsPage({
         )}
       </header>
 
-      {roleAtLeast(context.role, "ADMIN") && <AssetCsvImportForm />}
+      {roleAtLeast(context.role, "ADMIN") && <AssetCsvImportForm template={importTemplate} />}
 
-      <form className="grid gap-3 rounded-lg border border-border-default bg-surface p-4 sm:grid-cols-2 xl:grid-cols-3">
-        <input type="hidden" name="page" value="1" />
+      <CompactFilters
+        pathname="/assets"
+        params={params}
+        fieldNames={["search", "category", "status", "memberId", "projectId", "location", "sort"]}
+        filters={activeFilters}
+        preserveOnClear={["sort"]}
+      >
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
         <label className="relative">
           <span className="sr-only">Search assets</span>
           <Search size={16} aria-hidden="true" className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted" />
@@ -163,11 +187,8 @@ export default async function AssetsPage({
             <option value="updatedAt">Recently updated</option><option value="title">Name</option><option value="category">Category</option><option value="assetCode">Asset code</option>
           </select>
         </label>
-        <div className="flex gap-2 sm:col-span-2 xl:col-span-3">
-          <button type="submit" className="min-h-11 rounded-md border border-border-default px-4 text-sm font-semibold text-text-primary hover:bg-neutral-50">Apply filters</button>
-          {filtersActive && <Link href="/assets" className="inline-flex min-h-11 items-center px-3 text-sm font-medium text-brand-primary hover:underline">Clear filters</Link>}
         </div>
-      </form>
+      </CompactFilters>
 
       {assets.length ? (
         <>

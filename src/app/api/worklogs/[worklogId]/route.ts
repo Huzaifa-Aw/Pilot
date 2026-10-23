@@ -1,7 +1,7 @@
 import { AuditAction, Prisma, TimesheetPeriodStatus } from "@prisma/client";
 import { NextRequest, NextResponse } from "next/server";
 import { createAuditEvent } from "@/lib/audit";
-import { isTransactionConflict, requireTenantRole } from "@/lib/api";
+import { auditUserFailureResponse, isTransactionConflict, requireTenantRole } from "@/lib/api";
 import { db } from "@/lib/db";
 import { can } from "@/lib/permissions";
 import { roleAtLeast } from "@/lib/rbac";
@@ -12,20 +12,23 @@ type RouteContext = { params: Promise<{ worklogId: string }> };
 export async function PATCH(request: NextRequest, { params }: RouteContext) {
   const { context, response } = await requireTenantRole("ENGINEER");
   if (response) return response;
+  const { worklogId } = await params;
+  const fail = (status: number, error: string, code: string) => auditUserFailureResponse({
+    request, context, action: AuditAction.UPDATE, entityType: "worklog", entityId: worklogId, status, error, code,
+  });
   let body: unknown;
   try {
     body = await request.json();
   } catch (error) {
     if (error instanceof SyntaxError) {
-      return NextResponse.json({ error: "Request body must be valid JSON.", code: "VALIDATION_ERROR" }, { status: 400 });
+      return fail(400, "Request body must be valid JSON.", "VALIDATION_ERROR");
     }
     throw error;
   }
   const parsed = worklogUpdateSchema.safeParse(body);
   if (!parsed.success) {
-    return NextResponse.json({ error: "Check the time entry details.", code: "VALIDATION_ERROR", details: parsed.error.flatten().fieldErrors }, { status: 422 });
+    return fail(422, "Check the time entry details.", "VALIDATION_ERROR");
   }
-  const { worklogId } = await params;
 
   let result;
   try {
@@ -88,27 +91,30 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
     return { kind: "updated" as const, data: updated };
     }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
   } catch (error) {
-    if (isTransactionConflict(error)) return NextResponse.json({ error: "Time entries changed concurrently. Refresh and try again.", code: "CONFLICT" }, { status: 409 });
+    if (isTransactionConflict(error)) return fail(409, "Time entries changed concurrently. Refresh and try again.", "CONFLICT");
     throw error;
   }
 
-  if (result.kind === "missing") return NextResponse.json({ error: "Time entry not found.", code: "NOT_FOUND" }, { status: 404 });
-  if (result.kind === "forbidden") return NextResponse.json({ error: "You can edit only your own time entries.", code: "FORBIDDEN" }, { status: 403 });
-  if (result.kind === "forbidden-project") return NextResponse.json({ error: "You must be a member of the selected project to log time against it.", code: "FORBIDDEN" }, { status: 403 });
-  if (result.kind === "project") return NextResponse.json({ error: "Project not found.", code: "NOT_FOUND" }, { status: 404 });
-  if (result.kind === "month-change") return NextResponse.json({ error: "Move this entry by deleting it and logging it in the other month.", code: "VALIDATION_ERROR" }, { status: 422 });
-  if (result.kind === "future-date") return NextResponse.json({ error: "Time can only be logged for today or an earlier date.", code: "VALIDATION_ERROR" }, { status: 422 });
-  if (result.kind === "locked") return NextResponse.json({ error: "This submitted or approved month is locked.", code: "TIMESHEET_LOCKED" }, { status: 409 });
-  if (result.kind === "task") return NextResponse.json({ error: "Choose a task in the selected project.", code: "VALIDATION_ERROR" }, { status: 422 });
-  if (result.kind === "category") return NextResponse.json({ error: "Choose a project or non-project category.", code: "VALIDATION_ERROR" }, { status: 422 });
-  if (result.kind === "daily-limit") return NextResponse.json({ error: "Daily time cannot exceed 24 hours.", code: "DAILY_LIMIT" }, { status: 422 });
+  if (result.kind === "missing") return fail(404, "Time entry not found.", "NOT_FOUND");
+  if (result.kind === "forbidden") return fail(403, "You can edit only your own time entries.", "FORBIDDEN");
+  if (result.kind === "forbidden-project") return fail(403, "You must be a member of the selected project to log time against it.", "FORBIDDEN");
+  if (result.kind === "project") return fail(404, "Project not found.", "NOT_FOUND");
+  if (result.kind === "month-change") return fail(422, "Move this entry by deleting it and logging it in the other month.", "VALIDATION_ERROR");
+  if (result.kind === "future-date") return fail(422, "Time can only be logged for today or an earlier date.", "VALIDATION_ERROR");
+  if (result.kind === "locked") return fail(409, "This submitted or approved month is locked.", "TIMESHEET_LOCKED");
+  if (result.kind === "task") return fail(422, "Choose a task in the selected project.", "VALIDATION_ERROR");
+  if (result.kind === "category") return fail(422, "Choose a project or non-project category.", "VALIDATION_ERROR");
+  if (result.kind === "daily-limit") return fail(422, "Daily time cannot exceed 24 hours.", "DAILY_LIMIT");
   return NextResponse.json({ data: result.data });
 }
 
-export async function DELETE(_request: NextRequest, { params }: RouteContext) {
+export async function DELETE(request: NextRequest, { params }: RouteContext) {
   const { context, response } = await requireTenantRole("ENGINEER");
   if (response) return response;
   const { worklogId } = await params;
+  const fail = (status: number, error: string, code: string) => auditUserFailureResponse({
+    request, context, action: AuditAction.DELETE, entityType: "worklog", entityId: worklogId, status, error, code,
+  });
   const result = await db.$transaction(async (tx) => {
     const before = await tx.worklog.findFirst({
       where: { id: worklogId, organizationId: context.organizationId },
@@ -132,8 +138,8 @@ export async function DELETE(_request: NextRequest, { params }: RouteContext) {
     }, tx);
     return { kind: "deleted" as const };
   });
-  if (result.kind === "missing") return NextResponse.json({ error: "Time entry not found.", code: "NOT_FOUND" }, { status: 404 });
-  if (result.kind === "forbidden") return NextResponse.json({ error: "You can delete only your own time entries.", code: "FORBIDDEN" }, { status: 403 });
-  if (result.kind === "locked") return NextResponse.json({ error: "This submitted or approved month is locked.", code: "TIMESHEET_LOCKED" }, { status: 409 });
+  if (result.kind === "missing") return fail(404, "Time entry not found.", "NOT_FOUND");
+  if (result.kind === "forbidden") return fail(403, "You can delete only your own time entries.", "FORBIDDEN");
+  if (result.kind === "locked") return fail(409, "This submitted or approved month is locked.", "TIMESHEET_LOCKED");
   return NextResponse.json({ data: { id: worklogId } });
 }

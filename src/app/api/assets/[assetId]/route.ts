@@ -1,7 +1,7 @@
 import { AuditAction, Prisma } from "@prisma/client";
 import { NextRequest, NextResponse } from "next/server";
 import { createAuditEvent } from "@/lib/audit";
-import { isUniqueViolation, requireTenantRole } from "@/lib/api";
+import { auditUserFailureResponse, isUniqueViolation, requireTenantRole } from "@/lib/api";
 import { db } from "@/lib/db";
 import { prepareMetadataValues } from "@/lib/metadata";
 import { assetUpdateSchema } from "@/lib/validations/asset";
@@ -71,21 +71,21 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
   const { context, response } = await requireTenantRole("MANAGER");
   if (response) return response;
   const { assetId } = await params;
+  const fail = (status: number, error: string, code: string) => auditUserFailureResponse({
+    request, context, action: AuditAction.UPDATE, entityType: "asset", entityId: assetId, status, error, code,
+  });
   let body: unknown;
   try {
     body = await request.json();
   } catch (error) {
     if (error instanceof SyntaxError) {
-      return NextResponse.json({ error: "Request body must be valid JSON.", code: "VALIDATION_ERROR" }, { status: 400 });
+      return fail(400, "Request body must be valid JSON.", "VALIDATION_ERROR");
     }
     throw error;
   }
   const parsed = assetUpdateSchema.safeParse(body);
   if (!parsed.success) {
-    return NextResponse.json(
-      { error: "Check the asset details.", code: "VALIDATION_ERROR", details: parsed.error.flatten().fieldErrors },
-      { status: 422 },
-    );
+    return fail(422, "Check the asset details.", "VALIDATION_ERROR");
   }
   try {
     const updated = await db.$transaction(async (tx) => {
@@ -120,15 +120,15 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
       return { kind: "updated" as const, data: after };
     });
     if (!updated) {
-      return NextResponse.json({ error: "Asset not found.", code: "NOT_FOUND" }, { status: 404 });
+      return fail(404, "Asset not found.", "NOT_FOUND");
     }
     if (updated.kind === "metadata") {
-      return NextResponse.json({ error: updated.message, code: "VALIDATION_ERROR", field: "metadata" }, { status: 422 });
+      return fail(422, updated.message, "VALIDATION_ERROR");
     }
     return NextResponse.json({ data: updated.data });
   } catch (error) {
     if (isUniqueViolation(error)) {
-      return NextResponse.json({ error: "An asset with that code already exists.", code: "CONFLICT" }, { status: 409 });
+      return fail(409, "An asset with that code already exists.", "CONFLICT");
     }
     throw error;
   }
@@ -138,6 +138,9 @@ export async function DELETE(request: NextRequest, { params }: RouteContext) {
   const { context, response } = await requireTenantRole("ADMIN");
   if (response) return response;
   const { assetId } = await params;
+  const fail = (status: number, error: string, code: string) => auditUserFailureResponse({
+    request, context, action: AuditAction.DELETE, entityType: "asset", entityId: assetId, status, error, code,
+  });
   const result = await db.$transaction(async (tx) => {
     const before = await tx.asset.findFirst({
       where: { id: assetId, organizationId: context.organizationId },
@@ -160,10 +163,10 @@ export async function DELETE(request: NextRequest, { params }: RouteContext) {
     return { kind: "deleted" as const, id: assetId };
   });
   if (!result) {
-    return NextResponse.json({ error: "Asset not found.", code: "NOT_FOUND" }, { status: 404 });
+    return fail(404, "Asset not found.", "NOT_FOUND");
   }
   if (result.kind === "has-checkouts") {
-    return NextResponse.json({ error: "Assets with checkout history can't be deleted. Mark the asset retired instead.", code: "HAS_HISTORY" }, { status: 409 });
+    return fail(409, "Assets with checkout history can't be deleted. Mark the asset retired instead.", "HAS_HISTORY");
   }
   return NextResponse.json({ data: result });
 }

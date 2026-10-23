@@ -1,7 +1,7 @@
 import { AuditAction, Prisma } from "@prisma/client";
 import { NextRequest, NextResponse } from "next/server";
 import { createAuditEvent } from "@/lib/audit";
-import { isUniqueViolation, requireTenantRole } from "@/lib/api";
+import { auditUserFailureResponse, isUniqueViolation, requireTenantRole } from "@/lib/api";
 import { db } from "@/lib/db";
 import { prepareMetadataValues } from "@/lib/metadata";
 import { can } from "@/lib/permissions";
@@ -37,26 +37,26 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
   const { context, response } = await requireTenantRole("MANAGER");
   if (response) return response;
   const { projectId } = await params;
+  const fail = (status: number, error: string, code: string) => auditUserFailureResponse({
+    request, context, action: AuditAction.CREATE, entityType: "milestone", status, error, code,
+  });
 
   let body: unknown;
   try {
     body = await request.json();
   } catch (error) {
     if (error instanceof SyntaxError) {
-      return NextResponse.json({ error: "Request body must be valid JSON.", code: "VALIDATION_ERROR" }, { status: 400 });
+      return fail(400, "Request body must be valid JSON.", "VALIDATION_ERROR");
     }
     throw error;
   }
   const parsed = milestoneCreateSchema.safeParse(body);
   if (!parsed.success) {
-    return NextResponse.json(
-      { error: "Check the milestone details.", code: "VALIDATION_ERROR", details: parsed.error.flatten().fieldErrors },
-      { status: 422 },
-    );
+    return fail(422, "Check the milestone details.", "VALIDATION_ERROR");
   }
   const validation = await prepareMetadataValues(context.organizationId, "milestone", parsed.data.metadata ?? {});
   if (!validation.values) {
-    return NextResponse.json({ error: validation.error ?? "Custom values are invalid.", code: "VALIDATION_ERROR", field: "metadata" }, { status: 422 });
+    return fail(422, validation.error ?? "Custom values are invalid.", "VALIDATION_ERROR");
   }
   const metadataValues: Prisma.InputJsonObject = validation.values;
 
@@ -101,15 +101,15 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
     });
 
     if (!milestone) {
-      return NextResponse.json({ error: "Project not found.", code: "NOT_FOUND" }, { status: 404 });
+      return fail(404, "Project not found.", "NOT_FOUND");
     }
     if ("forbidden" in milestone) {
-      return NextResponse.json({ error: "Join this project before adding milestones.", code: "FORBIDDEN" }, { status: 403 });
+      return fail(403, "Join this project before adding milestones.", "FORBIDDEN");
     }
     return NextResponse.json({ data: milestone }, { status: 201 });
   } catch (error) {
     if (isUniqueViolation(error)) {
-      return NextResponse.json({ error: "That milestone number is already in use for this project.", code: "CONFLICT" }, { status: 409 });
+      return fail(409, "That milestone number is already in use for this project.", "CONFLICT");
     }
     throw error;
   }

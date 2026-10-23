@@ -1,10 +1,11 @@
 import { AuditAction, Prisma } from "@prisma/client";
 import { NextRequest, NextResponse } from "next/server";
 import { createAuditEvent } from "@/lib/audit";
-import { isUniqueViolation, requireTenantRole } from "@/lib/api";
+import { auditUserFailureResponse, isUniqueViolation, requireTenantRole } from "@/lib/api";
 import { db } from "@/lib/db";
 import { can } from "@/lib/permissions";
 import { allocationCreateSchema } from "@/lib/validations/allocation";
+import { allocationWeeksForRange } from "@/lib/allocation-planning";
 
 type RouteContext = { params: Promise<{ projectId: string }> };
 
@@ -84,7 +85,7 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
   if (response) return response;
   const { projectId } = await params;
   if (!(await can(context, "allocation.update", { projectId }))) {
-    return NextResponse.json({ error: "Join this project before changing allocations.", code: "FORBIDDEN" }, { status: 403 });
+    return auditUserFailureResponse({ request, context, action: AuditAction.CREATE, entityType: "resource_allocation", status: 403, error: "Join this project before changing allocations.", code: "FORBIDDEN" });
   }
 
   let body: unknown;
@@ -92,134 +93,130 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
     body = await request.json();
   } catch (error) {
     if (error instanceof SyntaxError) {
-      return NextResponse.json({ error: "Request body must be valid JSON.", code: "VALIDATION_ERROR" }, { status: 400 });
+      return auditUserFailureResponse({ request, context, action: AuditAction.CREATE, entityType: "resource_allocation", status: 400, error: "Request body must be valid JSON.", code: "VALIDATION_ERROR" });
     }
     throw error;
   }
   const parsed = allocationCreateSchema.safeParse(body);
   if (!parsed.success) {
-    return NextResponse.json(
-      { error: "Check the allocation details.", code: "VALIDATION_ERROR", details: parsed.error.flatten().fieldErrors },
-      { status: 422 },
-    );
+    return auditUserFailureResponse({ request, context, action: AuditAction.CREATE, entityType: "resource_allocation", status: 422, error: "Check the allocation details.", code: "VALIDATION_ERROR" });
   }
 
   let result;
   try {
     result = await db.$transaction(async (tx) => {
-    const [project, member] = await Promise.all([
-      tx.project.findFirst({
-        where: { id: projectId, organizationId: context.organizationId },
-        select: { id: true },
-      }),
-      tx.organizationMember.findFirst({
-        where: { id: parsed.data.memberId, organizationId: context.organizationId, isActive: true },
-        select: { id: true, capacityHrsPerWeek: true },
-      }),
-    ]);
-    if (!project) return { kind: "project" as const };
-    if (!member) return { kind: "member" as const };
+      const [project, member] = await Promise.all([
+        tx.project.findFirst({
+          where: { id: projectId, organizationId: context.organizationId },
+          select: { id: true },
+        }),
+        tx.organizationMember.findFirst({
+          where: { id: parsed.data.memberId, organizationId: context.organizationId, isActive: true },
+          select: { id: true, capacityHrsPerWeek: true },
+        }),
+      ]);
+      if (!project) return { kind: "project" as const };
+      if (!member) return { kind: "member" as const };
 
-    if (
-      parsed.data.milestoneId &&
-      !(await tx.milestone.findFirst({
-        where: {
-          id: parsed.data.milestoneId,
-          projectId,
+      if (
+        parsed.data.milestoneId &&
+        !(await tx.milestone.findFirst({
+          where: {
+            id: parsed.data.milestoneId,
+            projectId,
+            organizationId: context.organizationId,
+          },
+          select: { id: true },
+        }))
+      ) {
+        return { kind: "milestone" as const };
+      }
+
+      const expectedHours = member.capacityHrsPerWeek * parsed.data.allocationPct / 100;
+      if (Math.abs(parsed.data.plannedHrs - expectedHours) > 0.01) {
+        return { kind: "hours" as const, capacity: member.capacityHrsPerWeek };
+      }
+
+      const weeks = allocationWeeksForRange(parsed.data.startDate, parsed.data.endDate);
+      const totals: Array<{ weekStartDate: Date; current: number }> = [];
+      for (const weekStartDate of weeks) {
+        await lockWeek(tx, context.organizationId, member.id, weekStartDate);
+        const duplicate = await tx.resourceAllocation.findFirst({
+          where: { organizationId: context.organizationId, memberId: member.id, projectId, weekStartDate },
+          select: { id: true },
+        });
+        if (duplicate) return { kind: "duplicate" as const, weekStartDate };
+        const current = await tx.resourceAllocation.aggregate({
+          where: { organizationId: context.organizationId, memberId: member.id, weekStartDate },
+          _sum: { allocationPct: true },
+        });
+        const total = current._sum.allocationPct ?? 0;
+        if (total + parsed.data.allocationPct > 100) {
+          return { kind: "overallocated" as const, current: total, weekStartDate };
+        }
+        totals.push({ weekStartDate, current: total });
+      }
+
+      const allocations = [];
+      for (const { weekStartDate } of totals) {
+        const allocation = await tx.resourceAllocation.create({
+          data: {
+            organizationId: context.organizationId,
+            projectId,
+            memberId: member.id,
+            milestoneId: parsed.data.milestoneId ?? null,
+            weekStartDate,
+            plannedHrs: parsed.data.plannedHrs,
+            allocationPct: parsed.data.allocationPct,
+            mode: parsed.data.mode ?? "Remote",
+            notes: parsed.data.notes ?? null,
+          },
+        });
+        await createAuditEvent({
           organizationId: context.organizationId,
-        },
-        select: { id: true },
-      }))
-    ) {
-      return { kind: "milestone" as const };
-    }
-
-    const expectedHours = member.capacityHrsPerWeek * parsed.data.allocationPct / 100;
-    if (Math.abs(parsed.data.plannedHrs - expectedHours) > 0.01) {
-      return { kind: "hours" as const, capacity: member.capacityHrsPerWeek };
-    }
-
-    await lockWeek(tx, context.organizationId, member.id, parsed.data.weekStartDate);
-    const duplicate = await tx.resourceAllocation.findFirst({
-      where: {
-        organizationId: context.organizationId,
-        memberId: member.id,
-        projectId,
-        weekStartDate: parsed.data.weekStartDate,
-      },
-      select: { id: true },
-    });
-    if (duplicate) return { kind: "duplicate" as const };
-    const current = await tx.resourceAllocation.aggregate({
-      where: {
-        organizationId: context.organizationId,
-        memberId: member.id,
-        weekStartDate: parsed.data.weekStartDate,
-      },
-      _sum: { allocationPct: true },
-    });
-    const total = current._sum.allocationPct ?? 0;
-    if (total + parsed.data.allocationPct > 100) {
-      return { kind: "overallocated" as const, current: total };
-    }
-
-    const allocation = await tx.resourceAllocation.create({
-      data: {
-        ...parsed.data,
-        organizationId: context.organizationId,
-        projectId,
-        mode: parsed.data.mode ?? "Remote",
-      },
-    });
-    await createAuditEvent({
-      organizationId: context.organizationId,
-      actorId: context.userId,
-      action: AuditAction.CREATE,
-      entityType: "resource_allocation",
-      entityId: allocation.id,
-      after: {
-        id: allocation.id,
-        memberId: allocation.memberId,
-        projectId: allocation.projectId,
-        weekStartDate: serializeDate(allocation.weekStartDate),
-        plannedHrs: allocation.plannedHrs,
-        allocationPct: allocation.allocationPct,
-      },
-      userAgent: request.headers.get("user-agent"),
-    }, tx);
-    return { kind: "created" as const, allocation };
-    });
+          actorId: context.userId,
+          action: AuditAction.CREATE,
+          entityType: "resource_allocation",
+          entityId: allocation.id,
+          after: {
+            id: allocation.id,
+            memberId: allocation.memberId,
+            projectId: allocation.projectId,
+            weekStartDate: serializeDate(allocation.weekStartDate),
+            plannedHrs: allocation.plannedHrs,
+            allocationPct: allocation.allocationPct,
+          },
+          userAgent: request.headers.get("user-agent"),
+        }, tx);
+        allocations.push(allocation);
+      }
+      return { kind: "created" as const, allocations };
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
   } catch (error) {
     if (isUniqueViolation(error)) {
-      return NextResponse.json({ error: "An allocation for this member, project, and week already exists.", code: "CONFLICT" }, { status: 409 });
+      return auditUserFailureResponse({ request, context, action: AuditAction.CREATE, entityType: "resource_allocation", status: 409, error: "An allocation for this member, project, and week already exists.", code: "CONFLICT" });
     }
     throw error;
   }
 
   if (result.kind === "project") {
-    return NextResponse.json({ error: "Project not found.", code: "NOT_FOUND" }, { status: 404 });
+    return auditUserFailureResponse({ request, context, action: AuditAction.CREATE, entityType: "resource_allocation", status: 404, error: "Project not found.", code: "NOT_FOUND" });
   }
   if (result.kind === "member") {
-    return NextResponse.json({ error: "Select an active member of this organization.", code: "VALIDATION_ERROR" }, { status: 422 });
+    return auditUserFailureResponse({ request, context, action: AuditAction.CREATE, entityType: "resource_allocation", status: 422, error: "Select an active member of this organization.", code: "VALIDATION_ERROR" });
   }
   if (result.kind === "milestone") {
-    return NextResponse.json({ error: "Select a milestone in this project.", code: "VALIDATION_ERROR" }, { status: 422 });
+    return auditUserFailureResponse({ request, context, action: AuditAction.CREATE, entityType: "resource_allocation", status: 422, error: "Select a milestone in this project.", code: "VALIDATION_ERROR" });
   }
   if (result.kind === "hours") {
-    return NextResponse.json(
-      { error: `Planned hours must match the selected allocation percentage for this member's ${result.capacity}-hour week.`, code: "VALIDATION_ERROR" },
-      { status: 422 },
-    );
+    return auditUserFailureResponse({ request, context, action: AuditAction.CREATE, entityType: "resource_allocation", status: 422, error: `Planned hours must match the selected allocation percentage for this member's ${result.capacity}-hour week.`, code: "VALIDATION_ERROR" });
   }
   if (result.kind === "duplicate") {
-    return NextResponse.json({ error: "An allocation for this member, project, and week already exists.", code: "CONFLICT" }, { status: 409 });
+    return auditUserFailureResponse({ request, context, action: AuditAction.CREATE, entityType: "resource_allocation", status: 409, error: `An allocation for this member, project, and week already exists (${serializeDate(result.weekStartDate)}).`, code: "CONFLICT" });
   }
   if (result.kind === "overallocated") {
-    return NextResponse.json(
-      { error: `Week allocation exceeds 100% — reduce by ${(result.current + parsed.data.allocationPct - 100).toFixed(1)}%.`, code: "OVERALLOCATION" },
-      { status: 422 },
-    );
+    return auditUserFailureResponse({ request, context, action: AuditAction.CREATE, entityType: "resource_allocation", status: 422, error: `Week of ${serializeDate(result.weekStartDate)} exceeds 100% — reduce by ${(result.current + parsed.data.allocationPct - 100).toFixed(1)}%.`, code: "OVERALLOCATION" });
   }
 
-  return NextResponse.json({ data: result.allocation }, { status: 201 });
+  return NextResponse.json({ data: result.allocations }, { status: 201 });
 }

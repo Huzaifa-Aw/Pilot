@@ -4,7 +4,7 @@ import { useState } from "react";
 import { MetadataTemplateBuilder } from "@/components/forms/metadata-template-builder";
 import type { MetadataFieldDefinition } from "@/lib/validations/metadata";
 
-type EntityType = "project" | "asset" | "member" | "milestone" | "task";
+type EntityType = "project" | "asset" | "member" | "milestone" | "task" | "deployment";
 type Template = {
   id: string;
   name: string;
@@ -19,6 +19,7 @@ const entities: Array<{ type: EntityType; label: string; description: string }> 
   { type: "task", label: "Tasks", description: "Additional details shown on task forms and project boards." },
   { type: "member", label: "Members", description: "Additional organization member profile fields." },
   { type: "asset", label: "Assets", description: "Details your organization tracks for its assets." },
+  { type: "deployment", label: "Deployments", description: "Additional details for scheduled work." },
 ];
 
 export function MetadataTemplateSettings({ templates }: { templates: Template[] }) {
@@ -28,7 +29,7 @@ export function MetadataTemplateSettings({ templates }: { templates: Template[] 
 
   return (
     <div className="space-y-5">
-      <div aria-label="Metadata entity type" className="grid grid-cols-2 gap-2 sm:grid-cols-5">
+      <div aria-label="Metadata entity type" className="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-6">
         {entities.map(({ type, label }) => (
           <button
             key={type}

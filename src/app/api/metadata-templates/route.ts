@@ -4,12 +4,13 @@ import { createAuditEvent } from "@/lib/audit";
 import { isUniqueViolation, requireTenantRole } from "@/lib/api";
 import { db } from "@/lib/db";
 import { metadataTemplateCreateSchema } from "@/lib/validations/metadata";
+import { METADATA_ENTITY_TYPES } from "@/lib/constants";
 
 export async function GET(request: NextRequest) {
   const { context, response } = await requireTenantRole("VIEWER");
   if (response) return response;
   const entityType = request.nextUrl.searchParams.get("entityType");
-  if (entityType && !["project", "asset", "member", "milestone", "task"].includes(entityType)) {
+  if (entityType && !METADATA_ENTITY_TYPES.some((value) => value === entityType)) {
     return NextResponse.json({ error: "Choose a supported entity type.", code: "VALIDATION_ERROR" }, { status: 400 });
   }
 

@@ -54,9 +54,9 @@ export function DashboardFrame({
   }, []);
 
   return (
-    <div className="min-h-dvh bg-base md:flex">
+    <div className="relative min-h-dvh bg-base md:flex">
       <Sidebar currentPath={pathname} workspaceName={organizationName} role={role} />
-      <div className="flex min-h-dvh min-w-0 flex-1 flex-col">
+      <div className="flex min-h-dvh min-w-0 flex-1 flex-col md:pl-16">
         <Topbar
           title={title}
           currentPath={pathname}

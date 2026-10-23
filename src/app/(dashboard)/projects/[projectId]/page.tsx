@@ -9,6 +9,7 @@ import { MilestoneEditControl, TaskEditControl } from "@/components/forms/work-i
 import { StatusBadge } from "@/components/ui/status-badge";
 import { Card } from "@/components/ui/card";
 import { OnDeploymentBadge } from "@/components/data-display/on-deployment-badge";
+import { TaskLabelBadge } from "@/components/data-display/task-label-badge";
 import { BackLink } from "@/components/layout/BackLink";
 import { db } from "@/lib/db";
 import { getDefaultMetadataFields, metadataValuesForFields, unconfiguredMetadataValues } from "@/lib/metadata";
@@ -27,14 +28,21 @@ export default async function ProjectDetailPage({
   const { projectId } = await params;
   const today = new Date(new Date().toISOString().slice(0, 10) + "T00:00:00.000Z");
 
-  const [project, members, milestoneMetadataFields, taskMetadataFields, projectMetadataFields] = await Promise.all([
+  const [project, members, milestoneMetadataFields, taskMetadataFields, projectMetadataFields, taskLabels] = await Promise.all([
     db.project.findFirst({
       where: { id: projectId, organizationId: context.organizationId },
       include: {
+        workflow: {
+          include: {
+            statuses: { where: { isActive: true }, orderBy: { sortOrder: "asc" } },
+          },
+        },
         milestones: { orderBy: { sequenceNumber: "asc" } },
         tasks: {
           orderBy: [{ status: "asc" }, { priority: "desc" }, { dueDate: "asc" }],
           include: {
+            workflowStatus: { select: { id: true, name: true, category: true, sortOrder: true } },
+            labels: { include: { label: { select: { id: true, name: true, color: true } } } },
             assignments: {
               include: {
                 member: {
@@ -65,6 +73,7 @@ export default async function ProjectDetailPage({
     getDefaultMetadataFields(context.organizationId, "milestone"),
     getDefaultMetadataFields(context.organizationId, "task"),
     getDefaultMetadataFields(context.organizationId, "project"),
+    db.taskLabel.findMany({ where: { organizationId: context.organizationId }, select: { id: true, name: true, color: true }, orderBy: { name: "asc" } }),
   ]);
   if (!project) notFound();
   if (!(await can(context, "project.read", { projectId }))) notFound();
@@ -219,7 +228,7 @@ export default async function ProjectDetailPage({
               <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-2">
-                    <StatusBadge status={task.status} />
+                    <StatusBadge status={task.workflowStatus?.name ?? task.status} colorKey={task.workflowStatus?.category ?? task.status} />
                     <StatusBadge status={task.priority} showDot={false} />
                     {task.taskNumber !== null && <span className="font-mono text-xs text-text-muted">{project.code}-{task.taskNumber}</span>}
                     {task.requiredDiscipline && <span className="text-xs text-text-muted">Requires {task.requiredDiscipline}</span>}
@@ -227,6 +236,7 @@ export default async function ProjectDetailPage({
                   <h3 className="mt-2 text-sm font-semibold text-text-primary">{task.title}</h3>
                   {task.description && <p className="mt-1 text-sm leading-5 text-text-secondary">{task.description}</p>}
                   <div className="mt-3 flex flex-wrap gap-2">
+                    {task.labels.map(({ label }) => <TaskLabelBadge key={label.id} name={label.name} color={label.color} />)}
                     {task.assignments.map((assignment) => {
                       const mismatch = Boolean(task.requiredDiscipline && task.requiredDiscipline.trim().toLowerCase() !== (assignment.member.discipline ?? "").trim().toLowerCase());
                       return (
@@ -241,12 +251,12 @@ export default async function ProjectDetailPage({
                   {task.assignments.flatMap((assignment) => assignment.member.deploymentMemberships.map(({ deployment }, index) => <OnDeploymentBadge key={`${task.id}-${assignment.memberId}-${index}`} status={deployment.status} startDate={deployment.startDate} endDate={deployment.endDate} location={deployment.location} />))}
                 </div>
                 {canMoveTasks.get(task.id) ? (
-                  <TaskStatusControl projectId={project.id} taskId={task.id} initialStatus={task.status} initialActualHrs={task.actualHrs} />
+                  <TaskStatusControl projectId={project.id} taskId={task.id} initialWorkflowStatusId={task.workflowStatusId ?? ""} workflowStatuses={project.workflow?.statuses ?? []} initialActualHrs={task.actualHrs} />
                 ) : (
                   <div className="space-y-1"><StatusBadge status={task.status} /><p className="text-xs text-text-muted">Read-only — only project members assigned to this task can move it.</p></div>
                 )}
               </div>
-              {canEdit && <TaskEditControl projectId={project.id} task={task} milestones={milestoneOptions} relatedTasks={project.tasks.filter((item) => item.id !== task.id).map((item) => ({ id: item.id, title: item.title, taskNumber: item.taskNumber }))} members={memberOptions} metadataFields={taskMetadataFields} initialMetadata={metadataValuesForFields(taskMetadataFields, task.metadata ?? {})} />}
+              {canEdit && <TaskEditControl projectId={project.id} task={task} workflowStatuses={project.workflow?.statuses ?? []} labels={taskLabels} milestones={milestoneOptions} relatedTasks={project.tasks.filter((item) => item.id !== task.id).map((item) => ({ id: item.id, title: item.title, taskNumber: item.taskNumber }))} members={memberOptions} metadataFields={taskMetadataFields} initialMetadata={metadataValuesForFields(taskMetadataFields, task.metadata ?? {})} />}
             </Card>
           ))}
           {project.tasks.length === 0 && (
@@ -262,7 +272,7 @@ export default async function ProjectDetailPage({
               <Plus size={16} aria-hidden="true" /> Add task
             </summary>
             <div className="border-t border-border-default p-3 sm:p-4">
-              <TaskCreateForm projectId={project.id} milestones={milestoneOptions} members={memberOptions} metadataFields={taskMetadataFields} />
+              <TaskCreateForm projectId={project.id} milestones={milestoneOptions} members={memberOptions} workflowStatuses={project.workflow?.statuses ?? []} labels={taskLabels} metadataFields={taskMetadataFields} />
             </div>
           </details>
         )}

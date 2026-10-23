@@ -2,7 +2,7 @@ import { AuditAction, Prisma, TimesheetPeriodStatus } from "@prisma/client";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { createAuditEvent } from "@/lib/audit";
-import { isTransactionConflict, requireTenantRole } from "@/lib/api";
+import { auditUserFailureResponse, isTransactionConflict, requireTenantRole } from "@/lib/api";
 import { db } from "@/lib/db";
 import { can } from "@/lib/permissions";
 
@@ -15,20 +15,23 @@ const updateSchema = z.object({
 export async function PATCH(request: NextRequest, { params }: RouteContext) {
   const { context, response } = await requireTenantRole("ENGINEER");
   if (response) return response;
+  const { periodId } = await params;
+  const fail = (status: number, error: string, code: string) => auditUserFailureResponse({
+    request, context, action: AuditAction.UPDATE, entityType: "timesheet_period", entityId: periodId, status, error, code,
+  });
   let body: unknown;
   try {
     body = await request.json();
   } catch (error) {
     if (error instanceof SyntaxError) {
-      return NextResponse.json({ error: "Request body must be valid JSON.", code: "VALIDATION_ERROR" }, { status: 400 });
+      return fail(400, "Request body must be valid JSON.", "VALIDATION_ERROR");
     }
     throw error;
   }
   const parsed = updateSchema.safeParse(body);
   if (!parsed.success) {
-    return NextResponse.json({ error: "Choose a valid timesheet action.", code: "VALIDATION_ERROR" }, { status: 422 });
+    return fail(422, "Choose a valid timesheet action.", "VALIDATION_ERROR");
   }
-  const { periodId } = await params;
   let result;
   try {
     result = await db.$transaction(async (tx) => {
@@ -81,14 +84,14 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
     return { kind: "updated" as const, data: updated };
     }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
   } catch (error) {
-    if (isTransactionConflict(error)) return NextResponse.json({ error: "This timesheet changed concurrently. Refresh and review it again.", code: "CONFLICT" }, { status: 409 });
+    if (isTransactionConflict(error)) return fail(409, "This timesheet changed concurrently. Refresh and review it again.", "CONFLICT");
     throw error;
   }
 
-  if (result.kind === "missing") return NextResponse.json({ error: "Timesheet month not found.", code: "NOT_FOUND" }, { status: 404 });
-  if (result.kind === "forbidden") return NextResponse.json({ error: "You don't have access to change this timesheet.", code: "FORBIDDEN" }, { status: 403 });
-  if (result.kind === "self-review") return NextResponse.json({ error: "You can't approve or reopen your own timesheet.", code: "FORBIDDEN" }, { status: 403 });
-  if (result.kind === "state") return NextResponse.json({ error: "This timesheet month cannot make that status transition.", code: "INVALID_TRANSITION" }, { status: 409 });
-  if (result.kind === "empty") return NextResponse.json({ error: "Log time before submitting this month.", code: "EMPTY_TIMESHEET" }, { status: 422 });
+  if (result.kind === "missing") return fail(404, "Timesheet month not found.", "NOT_FOUND");
+  if (result.kind === "forbidden") return fail(403, "You don't have access to change this timesheet.", "FORBIDDEN");
+  if (result.kind === "self-review") return fail(403, "You can't approve or reopen your own timesheet.", "FORBIDDEN");
+  if (result.kind === "state") return fail(409, "This timesheet month cannot make that status transition.", "INVALID_TRANSITION");
+  if (result.kind === "empty") return fail(422, "Log time before submitting this month.", "EMPTY_TIMESHEET");
   return NextResponse.json({ data: result.data });
 }

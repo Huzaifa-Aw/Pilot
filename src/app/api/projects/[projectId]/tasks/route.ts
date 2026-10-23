@@ -1,12 +1,13 @@
 import { AuditAction, TaskPriority, TaskStatus } from "@prisma/client";
 import { NextRequest, NextResponse } from "next/server";
 import { createAuditEvent } from "@/lib/audit";
-import { requireTenantRole } from "@/lib/api";
+import { auditUserFailureResponse, isUniqueViolation, requireTenantRole } from "@/lib/api";
 import { db } from "@/lib/db";
 import { can } from "@/lib/permissions";
-import { prepareMetadataValues } from "@/lib/metadata";
+import { getDefaultMetadataFields, prepareMetadataValues } from "@/lib/metadata";
 import { idSchema } from "@/lib/validations/shared";
 import { taskCreateSchema } from "@/lib/validations/task";
+import { missingRequiredTaskFields, requiredTaskFieldLabels, resolveWorkflowForProject } from "@/lib/task-workflows";
 
 type RouteContext = { params: Promise<{ projectId: string }> };
 
@@ -113,29 +114,54 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
     body = await request.json();
   } catch (error) {
     if (error instanceof SyntaxError) {
-      return NextResponse.json({ error: "Request body must be valid JSON.", code: "VALIDATION_ERROR" }, { status: 400 });
+      return auditUserFailureResponse({ request, context, action: AuditAction.CREATE, entityType: "task", status: 400, error: "Request body must be valid JSON.", code: "VALIDATION_ERROR" });
     }
     throw error;
   }
   const parsed = taskCreateSchema.safeParse(body);
   if (!parsed.success) {
-    return NextResponse.json(
-      { error: "Check the task details.", code: "VALIDATION_ERROR", details: parsed.error.flatten().fieldErrors },
-      { status: 422 },
-    );
+    return auditUserFailureResponse({ request, context, action: AuditAction.CREATE, entityType: "task", status: 422, error: "Check the task details.", code: "VALIDATION_ERROR" });
   }
 
-  const { assigneeIds = [], metadata: submittedMetadata, ...taskData } = parsed.data;
+  const {
+    assigneeIds = [],
+    metadata: submittedMetadata,
+    workflowStatusId: requestedWorkflowStatusId,
+    labelIds = [],
+    flagged,
+    flagReason,
+    status: legacyStatus,
+    ...taskData
+  } = parsed.data;
   const uniqueAssigneeIds = [...new Set(assigneeIds)];
-  const result = await db.$transaction(async (tx) => {
+  const uniqueLabelIds = [...new Set(labelIds)];
+  let result;
+  try {
+    result = await db.$transaction(async (tx) => {
     const project = await tx.project.findFirst({
       where: { id: projectId, organizationId: context.organizationId },
-      select: { id: true, taskCounter: true },
+      select: { id: true, taskCounter: true, workflowId: true },
     });
     if (!project) return { kind: "project" as const };
     if (!(await can(context, "task.create", { projectId }))) return { kind: "forbidden" as const };
     const metadataResult = await prepareMetadataValues(context.organizationId, "task", submittedMetadata ?? {}, undefined, tx);
     if (metadataResult.error) return { kind: "metadata" as const, message: metadataResult.error };
+    const workflow = await resolveWorkflowForProject(tx, context.organizationId, project.workflowId);
+    if (!workflow) return { kind: "workflow" as const };
+    const workflowStatus = requestedWorkflowStatusId
+      ? workflow.statuses.find(({ id }) => id === requestedWorkflowStatusId)
+      : legacyStatus
+        ? workflow.statuses.find(({ category }) => category === legacyStatus)
+        : workflow.statuses.find(({ isInitial }) => isInitial);
+    if (!workflowStatus) return { kind: "workflow-status" as const };
+    const missingFields = missingRequiredTaskFields(
+      workflowStatus.requiredFieldKeys,
+      { ...taskData, assigneeIds: uniqueAssigneeIds, labelIds: uniqueLabelIds, ...metadataResult.values },
+    );
+    if (missingFields.length) {
+      const customFields = await getDefaultMetadataFields(context.organizationId, "task", tx);
+      return { kind: "required-fields" as const, fields: requiredTaskFieldLabels(missingFields, customFields) };
+    }
 
     if (taskData.milestoneId) {
       const milestone = await tx.milestone.findFirst({
@@ -164,6 +190,13 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
         })
       : [];
     if (members.length !== uniqueAssigneeIds.length) return { kind: "assignee" as const };
+    const labels = uniqueLabelIds.length
+      ? await tx.taskLabel.findMany({
+          where: { id: { in: uniqueLabelIds }, organizationId: context.organizationId },
+          select: { id: true },
+        })
+      : [];
+    if (labels.length !== uniqueLabelIds.length) return { kind: "label" as const };
 
     const nextProject = await tx.project.update({
       where: { id_organizationId: { id: projectId, organizationId: context.organizationId } },
@@ -177,8 +210,15 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
         organizationId: context.organizationId,
         taskNumber: nextProject.taskCounter,
         sortOrder: nextProject.taskCounter,
+        status: workflowStatus.category,
+        workflowStatusId: workflowStatus.id,
         metadata: metadataResult.values,
-        ...(taskData.status === "COMPLETED" ? { completedAt: new Date() } : {}),
+        ...(workflowStatus.category === "COMPLETED" ? { completedAt: new Date() } : {}),
+        ...(flagged ? {
+          flaggedAt: new Date(),
+          flaggedByMemberId: context.memberId,
+          flagReason: flagReason ?? null,
+        } : {}),
       },
     });
     if (uniqueAssigneeIds.length) {
@@ -190,9 +230,16 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
         })),
       });
     }
+    if (uniqueLabelIds.length) {
+      await tx.taskLabelAssignment.createMany({
+        data: uniqueLabelIds.map((labelId) => ({ taskId: task.id, labelId, organizationId: context.organizationId })),
+      });
+    }
     const taskWithAssignments = await tx.task.findFirstOrThrow({
       where: { id: task.id, organizationId: context.organizationId },
       include: {
+        workflowStatus: { select: { id: true, name: true, category: true, sortOrder: true } },
+        labels: { include: { label: { select: { id: true, name: true, color: true } } } },
         assignments: {
           include: {
             member: {
@@ -217,31 +264,49 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
         projectId,
         title: task.title,
         status: task.status,
+        workflowStatusId: workflowStatus.id,
         priority: task.priority,
         assigneeIds: uniqueAssigneeIds,
+        labelIds: uniqueLabelIds,
+        flagged: Boolean(flagged),
       },
       userAgent: request.headers.get("user-agent"),
     }, tx);
     return { kind: "created" as const, task: withDisciplineWarnings(taskWithAssignments) };
-  });
+    });
+  } catch (error) {
+    if (isUniqueViolation(error)) {
+      return auditUserFailureResponse({ request, context, action: AuditAction.CREATE, entityType: "task", status: 409, error: "A task with that number already exists in this project.", code: "CONFLICT" });
+    }
+    throw error;
+  }
 
   if (result.kind === "project") {
-    return NextResponse.json({ error: "Project not found.", code: "NOT_FOUND" }, { status: 404 });
+    return auditUserFailureResponse({ request, context, action: AuditAction.CREATE, entityType: "task", status: 404, error: "Project not found.", code: "NOT_FOUND" });
   }
   if (result.kind === "milestone") {
-    return NextResponse.json({ error: "Choose a milestone in this project.", code: "VALIDATION_ERROR" }, { status: 422 });
+    return auditUserFailureResponse({ request, context, action: AuditAction.CREATE, entityType: "task", status: 422, error: "Choose a milestone in this project.", code: "VALIDATION_ERROR" });
   }
   if (result.kind === "dependency") {
-    return NextResponse.json({ error: "Choose parent and blocking tasks from this project.", code: "VALIDATION_ERROR" }, { status: 422 });
+    return auditUserFailureResponse({ request, context, action: AuditAction.CREATE, entityType: "task", status: 422, error: "Choose parent and blocking tasks from this project.", code: "VALIDATION_ERROR" });
   }
   if (result.kind === "assignee") {
-    return NextResponse.json({ error: "One or more assignees are not active members of this organization.", code: "VALIDATION_ERROR" }, { status: 422 });
+    return auditUserFailureResponse({ request, context, action: AuditAction.CREATE, entityType: "task", status: 422, error: "One or more assignees are not active members of this organization.", code: "VALIDATION_ERROR" });
   }
   if (result.kind === "forbidden") {
-    return NextResponse.json({ error: "Join this project before creating tasks.", code: "FORBIDDEN" }, { status: 403 });
+    return auditUserFailureResponse({ request, context, action: AuditAction.CREATE, entityType: "task", status: 403, error: "Join this project before creating tasks.", code: "FORBIDDEN" });
   }
   if (result.kind === "metadata") {
-    return NextResponse.json({ error: result.message, code: "VALIDATION_ERROR", field: "metadata" }, { status: 422 });
+    return auditUserFailureResponse({ request, context, action: AuditAction.CREATE, entityType: "task", status: 422, error: result.message, code: "VALIDATION_ERROR" });
+  }
+  if (result.kind === "workflow" || result.kind === "workflow-status") {
+    return auditUserFailureResponse({ request, context, action: AuditAction.CREATE, entityType: "task", status: 422, error: "Choose an active status in this project's workflow.", code: "VALIDATION_ERROR" });
+  }
+  if (result.kind === "required-fields") {
+    return auditUserFailureResponse({ request, context, action: AuditAction.CREATE, entityType: "task", status: 422, error: `Complete the required fields: ${result.fields.join(", ")}.`, code: "REQUIRED_FIELDS" });
+  }
+  if (result.kind === "label") {
+    return auditUserFailureResponse({ request, context, action: AuditAction.CREATE, entityType: "task", status: 422, error: "Choose labels available to this organization.", code: "VALIDATION_ERROR" });
   }
   return NextResponse.json({ data: result.task }, { status: 201 });
 }
